@@ -305,10 +305,6 @@ def main():
             download.save_as(local_path)
             print(f"Archivo Excel descargado localmente en: {local_path}")
             
-            # Aplicar corrección de desfase de 6 horas si se ejecuta en GitHub Actions (Nube)
-            if os.environ.get("GITHUB_ACTIONS") == "true":
-                corregir_desfase_horas(local_path, horas=-6)
-            
             # 11. Subida a Google Drive vía Web App
             if web_app_url:
                 success = subir_a_google_drive(local_path, web_app_url, token)
