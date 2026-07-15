@@ -1,0 +1,6 @@
+ubiqo_config.json
+daily_run.log
+*.xlsx
+__pycache__/
+.pytest_cache/
+.DS_Store
