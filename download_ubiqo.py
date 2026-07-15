@@ -5,7 +5,7 @@ import time
 import base64
 import re
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Auto-instalar dependencias de Python si no están
 try:
@@ -109,8 +109,10 @@ def check_variable_if_unchecked(page, input_id, label_selector):
 def main():
     user, password, web_app_url, token = obtener_credenciales()
     
-    # Calcular fecha de ayer (Trigger busca lo de un día antes)
-    yesterday = datetime.now() - timedelta(days=1)
+    # Calcular fecha de ayer en la zona horaria de México (UTC-6)
+    mx_tz = timezone(timedelta(hours=-6))
+    now_mx = datetime.now(mx_tz)
+    yesterday = now_mx - timedelta(days=1)
     
     # Formato Kendo Calendar data-value: YYYY/M/D (con mes 0-indexado)
     kendo_year = yesterday.year
@@ -120,7 +122,7 @@ def main():
     
     formatted_date_file = yesterday.strftime("%d-%m-%Y")
     
-    print(f"\nFecha a consultar (Ayer): {yesterday.strftime('%d/%m/%Y')} (Kendo: {kendo_date_val})")
+    print(f"\nFecha a consultar (Ayer en México): {yesterday.strftime('%d/%m/%Y')} (Kendo: {kendo_date_val})")
     
     with sync_playwright() as p:
         print("Iniciando navegador...")
@@ -158,31 +160,21 @@ def main():
         page.locator('div#controlFechaInicio_selectorFechasReporte').first.wait_for(state="visible", timeout=25000)
         time.sleep(3)
         
-        # 4. Configurar fechas de calendarios (Inicio y Fin = ayer)
-        print("Configurando fechas en calendarios de Kendo...")
-        
-        # Click en la fecha de inicio
-        selector_fecha_ini = f'div#controlFechaInicio_selectorFechasReporte a[data-value="{kendo_date_val}"]'
-        selector_fecha_fin = f'div#controlFechaFin_selectorFechasReporte a[data-value="{kendo_date_val}"]'
-        
-        print(f"Seleccionando fecha inicio: {kendo_date_val}...")
-        try:
-            page.locator(selector_fecha_ini).first.click(timeout=5000)
-        except Exception:
-            # Si no está visible (ej. cambio de mes), intentamos dar click en prev
-            print("Fecha no encontrada en mes actual, navegando al mes anterior...")
-            page.locator('div#controlFechaInicio_selectorFechasReporte a.k-nav-prev').first.click()
-            time.sleep(1)
-            page.locator(selector_fecha_ini).first.click()
-            
-        print(f"Seleccionando fecha fin: {kendo_date_val}...")
-        try:
-            page.locator(selector_fecha_fin).first.click(timeout=5000)
-        except Exception:
-            print("Fecha no encontrada en mes actual, navegando al mes anterior...")
-            page.locator('div#controlFechaFin_selectorFechasReporte a.k-nav-prev').first.click()
-            time.sleep(1)
-            page.locator(selector_fecha_fin).first.click()
+        # 4. Configurar fechas de calendarios (Inicio y Fin = ayer) utilizando la API de Kendo UI
+        print("Configurando fechas en calendarios de Kendo mediante API de Kendo...")
+        page.evaluate(f"""() => {{
+            var calIni = $("#controlFechaInicio_selectorFechasReporte").data("kendoCalendar");
+            if (calIni) {{
+                calIni.value(new Date({kendo_year}, {kendo_month}, {kendo_day}));
+                calIni.trigger("change");
+            }}
+            var calFin = $("#controlFechaFin_selectorFechasReporte").data("kendoCalendar");
+            if (calFin) {{
+                calFin.value(new Date({kendo_year}, {kendo_month}, {kendo_day}));
+                calFin.trigger("change");
+            }}
+        }}""")
+        time.sleep(2)
             
         # 5. Seleccionar Grupos -> Unidades Instalaciones
         print("Seleccionando grupo 'Unidades Instalaciones'...")
