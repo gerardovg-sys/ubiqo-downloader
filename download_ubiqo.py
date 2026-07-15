@@ -128,7 +128,7 @@ def main():
         print("Iniciando navegador...")
         # Abrimos en modo headless (invisible) para tareas en segundo plano
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(accept_downloads=True, timezone_id="America/Mexico_City", viewport={"width": 1280, "height": 800})
+        context = browser.new_context(accept_downloads=True, timezone_id="America/Mexico_City", locale="es-MX", viewport={"width": 1280, "height": 800})
         page = context.new_page()
         
         url_login = "https://clientes.ubiqo.net/Publica/Inicio_Sesion.aspx?ReturnUrl=%2fModulos%2fUltimaUbicacion%2fDefaultReact.aspx"
