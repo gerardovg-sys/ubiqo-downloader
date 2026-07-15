@@ -106,6 +106,43 @@ def check_variable_if_unchecked(page, input_id, label_selector):
             print(f"Marcando variable {input_id}...")
             page.locator(label_selector).first.click(force=True)
 
+def corregir_desfase_horas(file_path, horas=-6):
+    print(f"Corrigiendo desfase de {horas} horas en el archivo {file_path}...")
+    try:
+        import openpyxl
+    except ImportError:
+        print("Instalando la librería 'openpyxl'...")
+        os.system("pip install openpyxl")
+        import openpyxl
+        
+    try:
+        wb = openpyxl.load_workbook(file_path)
+        for sheet in wb.worksheets:
+            for r in range(1, sheet.max_row + 1):
+                for c in range(1, sheet.max_column + 1):
+                    val = sheet.cell(row=r, column=c).value
+                    if isinstance(val, str):
+                        match = re.match(r'^(\d{2}/\d{2}/\d{2,4}) (\d{2}:\d{2}:\d{2})$', val.strip())
+                        if match:
+                            date_part = match.group(1)
+                            year_len = len(date_part.split('/')[-1])
+                            fmt = "%d/%m/%y %H:%M:%S" if year_len == 2 else "%d/%m/%Y %H:%M:%S"
+                            try:
+                                dt = datetime.strptime(val.strip(), fmt)
+                                dt_new = dt + timedelta(hours=horas)
+                                sheet.cell(row=r, column=c).value = dt_new.strftime(fmt)
+                            except Exception:
+                                pass
+                    elif isinstance(val, datetime):
+                        try:
+                            sheet.cell(row=r, column=c).value = val + timedelta(hours=horas)
+                        except Exception:
+                            pass
+        wb.save(file_path)
+        print("Corrección de desfase de horas aplicada con éxito.")
+    except Exception as e:
+        print(f"Error al corregir el desfase de horas en Excel: {e}")
+
 def main():
     user, password, web_app_url, token = obtener_credenciales()
     
@@ -267,6 +304,10 @@ def main():
             local_path = os.path.abspath(local_filename)
             download.save_as(local_path)
             print(f"Archivo Excel descargado localmente en: {local_path}")
+            
+            # Aplicar corrección de desfase de 6 horas si se ejecuta en GitHub Actions (Nube)
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                corregir_desfase_horas(local_path, horas=-6)
             
             # 11. Subida a Google Drive vía Web App
             if web_app_url:
