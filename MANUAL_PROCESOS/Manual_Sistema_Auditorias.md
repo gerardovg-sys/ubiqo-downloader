@@ -152,6 +152,7 @@ El menú se integra directamente en la barra superior de Google Sheets:
 ├── ────────────────────────────────────
 ├── 🔬 Generar Diagnóstico Detallado GPS
 ├── 🧪 Procesar GPS en Hoja de Prueba
+├── 🔄 Recalcular Diagnóstico y Prueba
 ├── 🚀 Procesar GPS en Bitácora Real
 └── ℹ️ Acerca del sistema de auditorías
 ```

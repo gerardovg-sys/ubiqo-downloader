@@ -20,6 +20,44 @@ function ejecutarProcesamientoGPSPrueba() {
   ejecutarProcesamientoGPSCore(true);
 }
 
+/**
+ * Vuelve a ejecutar el Diagnóstico GPS y el Prellenado de Bitacora_Prueba
+ * utilizando la configuración actualizada (Geocercas, Proyectos Especiales y Relacion_Unidades)
+ * sin modificar la Bitácora Real.
+ */
+function ejecutarRecalcularDiagnosticoYPrueba() {
+  var ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) {}
+  
+  var ssActive = SpreadsheetApp.getActiveSpreadsheet();
+  if (ssActive) ssActive.toast('🔄 Recalculando Diagnóstico y Bitacora_Prueba con nueva configuración...', 'Auditorías SMARTCORP', 10);
+  
+  try {
+    Logger.log('=== [RECALCULAR] Inicio de recálculo con nueva configuración ===');
+    
+    // 1. Re-ejecutar Diagnóstico GPS
+    ejecutarDiagnosticoDetalladoGPS(true);
+    
+    // 2. Re-ejecutar Prellenado en Bitacora_Prueba
+    ejecutarProcesamientoGPSCore(true, true);
+    
+    if (ui) {
+      ui.alert(
+        '🔄 Recálculo Completado Exitosamente',
+        'Se han vuelto a calcular el Diagnóstico GPS y la hoja borrador Bitacora_Prueba considerando los datos actualizados de:\n\n' +
+        '  • Geocercas (Proyectos_GPS)\n' +
+        '  • Proyectos Especiales\n' +
+        '  • Relación de Unidades\n\n' +
+        'Puedes revisar ahora las pestañas Diagnostico_GPS y Bitacora_Prueba.',
+        ui.ButtonSet.OK
+      );
+    }
+  } catch (e) {
+    Logger.log('=== [RECALCULAR] ❌ Error: ' + e.message);
+    if (ui) ui.alert('❌ Error en Recálculo', e.message, ui.ButtonSet.OK);
+  }
+}
+
 function ejecutarProcesamientoGPSCore(isPrueba, isSilent) {
   var ui = null;
   try { ui = SpreadsheetApp.getUi(); } catch (e) {}

@@ -65,6 +65,12 @@ Si por alguna razón necesitas cargar un archivo GPS a deshoras o de forma manua
 3. Se abrirá una ventana emergente. Arrastra o selecciona tu archivo Excel `.xlsx` de Ubiqo y haz clic en **Guardar**.
 4. El sistema procesará el archivo y prellenará `Bitacora_Prueba` automáticamente.
 
+### Opción C: Recalcular con Geocercas o Proyectos Nuevos
+Si editaste alguna geocerca en `Proyectos_GPS` o agregaste un proyecto especial en `Proyectos_Especiales`:
+1. En el menú superior, haz clic en **`🔍 Auditorías SMARTCORP`**.
+2. Selecciona **`🔄 Recalcular Diagnóstico y Prueba`**.
+3. El borrador `Bitacora_Prueba` y la radiografía `Diagnostico_GPS` se actualizarán al instante con los nuevos radios o reglas sin tocar la Bitácora Real.
+
 ---
 
 ## ❓ Preguntas Frecuentes y Significado de Códigos

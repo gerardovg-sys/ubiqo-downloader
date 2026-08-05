@@ -31,7 +31,9 @@ function onOpen() {
       // — Procesamiento y Diagnóstico —
       .addItem('🔬 Generar Diagnóstico Detallado GPS',  'ejecutarDiagnosticoDetalladoGPS')
       .addItem('🧪 Procesar GPS en Hoja de Prueba',     'ejecutarProcesamientoGPSPrueba')
+      .addItem('🔄 Recalcular Diagnóstico y Prueba',    'ejecutarRecalcularDiagnosticoYPrueba')
       .addItem('🚀 Procesar GPS en Bitácora Real',      'ejecutarProcesamientoGPS')
+      .addSeparator()
       .addItem('ℹ️ Acerca del sistema de auditorías',   'mostrarAcercaDeAuditorias')
       .addToUi();
 }
