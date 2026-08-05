@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-light: #64748b;
+      --border: #e2e8f0;
+      
+      --color-success: #10b981;
+      --color-error: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 20px;
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 16px;
+      text-align: center;
+    }
+
+    .header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .header p {
+      color: var(--text-light);
+      font-size: 12px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    }
+
+    /* DROPZONE */
+    .dropzone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      background-color: #fafafb;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-bottom: 16px;
+    }
+
+    .dropzone.dragover {
+      border-color: var(--primary);
+      background-color: #eff6ff;
+    }
+
+    .dropzone-icon {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #94a3b8;
+    }
+
+    .dropzone-text {
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-subtext {
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    /* FILE LIST */
+    .file-list {
+      max-height: 120px;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background-color: #fff;
+      display: none;
+    }
+
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .file-item:last-child {
+      border-bottom: none;
+    }
+
+    .file-name {
+      font-weight: 500;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 70%;
+    }
+
+    .file-size {
+      color: var(--text-light);
+    }
+
+    .file-remove {
+      color: var(--color-error);
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+      padding: 0 4px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-primary:disabled {
+      background-color: #93c5fd;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background-color: var(--border);
+      color: var(--text);
+      margin-top: 10px;
+    }
+
+    .btn-secondary:hover {
+      background-color: #cbd5e1;
+    }
+
+    /* PROGRESS CONTAINER */
+    .progress-container {
+      display: none;
+      text-align: center;
+      padding: 20px 10px;
+    }
+
+    .progress-status {
+      font-weight: 500;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background-color: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background-color: var(--primary);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-text {
+      font-size: 11px;
+      color: var(--text-light);
+    }
+
+    /* SUCCESS CONTAINER */
+    .success-container {
+      display: none;
+      text-align: center;
+      padding: 20px 10px;
+    }
+
+    .success-icon {
+      font-size: 40px;
+      color: var(--color-success);
+      margin-bottom: 12px;
+    }
+
+    .success-msg {
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .success-submsg {
+      font-size: 13px;
+      color: var(--text-light);
+      line-height: 1.4;
+      margin-bottom: 16px;
+    }
+
+    /* ERROR CONTAINER */
+    .error-container {
+      display: none;
+      text-align: center;
+      padding: 20px 10px;
+    }
+
+    .error-icon {
+      font-size: 40px;
+      color: var(--color-error);
+      margin-bottom: 12px;
+    }
+
+    .error-msg {
+      font-weight: 500;
+      color: #991b1b;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .alert-box {
+      background-color: #fef2f2;
+      border: 1px solid #fee2e2;
+      color: #991b1b;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      display: none;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- FORM UPLOAD SCREEN -->
+    <div id="uploadFormScreen">
+      <div class="header">
+        <h2>📡 Subir Reportes GPS</h2>
+        <p>Los archivos se guardarán directamente en la carpeta <strong>GPS_Pendientes</strong> de Google Drive.</p>
+      </div>
+
+      <div class="card">
+        <div id="alertBox" class="alert-box"></div>
+
+        <!-- Drag & Drop Area -->
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+          <div class="dropzone-icon">📤</div>
+          <div class="dropzone-text">Arrastra los archivos Excel aquí</div>
+          <div class="dropzone-subtext">O haz clic para explorar en tu computadora (.xlsx, .xls)</div>
+          <input type="file" id="fileInput" multiple accept=".xlsx,.xls" style="display:none" onchange="seleccionarArchivos(this.files)">
+        </div>
+
+        <!-- File List -->
+        <div class="file-list" id="fileList"></div>
+
+        <!-- Submit Button -->
+        <button class="btn btn-primary" id="btnUpload" disabled onclick="iniciarSubida()">
+          🚀 Subir Archivos Seleccionados
+        </button>
+      </div>
+    </div>
+
+    <!-- PROGRESS SCREEN -->
+    <div id="progressScreen" class="progress-container">
+      <div class="progress-status" id="progressStatus">Subiendo archivos...</div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="progress-text" id="progressText">Archivo 0 de 0 (0%)</div>
+    </div>
+
+    <!-- SUCCESS SCREEN -->
+    <div id="successScreen" class="success-container">
+      <div class="success-icon">✅</div>
+      <div class="success-msg">¡Subida Completada!</div>
+      <div class="success-submsg" id="successSubmsg">Los archivos se han cargado exitosamente en Google Drive.</div>
+      <button class="btn btn-primary" onclick="cerrarDialogo()">
+        Cerrar Ventana
+      </button>
+    </div>
+
+    <!-- ERROR SCREEN -->
+    <div id="errorScreen" class="error-container">
+      <div class="error-icon">❌</div>
+      <h3>Error en la subida</h3>
+      <div class="error-msg" id="errorMsg">Ocurrió un error inesperado al subir los archivos.</div>
+      <button class="btn btn-secondary" onclick="regresarAFormulario()">
+        🔄 Volver a intentar
+      </button>
+    </div>
+  </div>
+
+  <script>
+    var queue = []; // Lista de objetos { file: File }
+    var currentUploadIndex = 0;
+    var totalFiles = 0;
+
+    // Configurar eventos de Drag & Drop
+    var dropzone = document.getElementById('dropzone');
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropzone.addEventListener(eventName, e => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropzone.addEventListener(eventName, e => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      }, false);
+    });
+
+    dropzone.addEventListener('drop', e => {
+      var dt = e.dataTransfer;
+      var files = dt.files;
+      seleccionarArchivos(files);
+    });
+
+    function seleccionarArchivos(files) {
+      document.getElementById('alertBox').style.display = 'none';
+
+      for (var i = 0; i < files.length; i++) {
+        var file = files[i];
+        
+        // Validar extensión
+        var ext = file.name.split('.').pop().toLowerCase();
+        if (ext !== 'xlsx' && ext !== 'xls') {
+          mostrarAlerta("❌ El archivo \"" + file.name + "\" no es un archivo Excel válido (.xlsx o .xls).");
+          continue;
+        }
+
+        // Evitar duplicados en la cola
+        var duplicado = queue.some(item => item.file.name === file.name && item.file.size === file.size);
+        if (!duplicado) {
+          queue.push({ file: file });
+        }
+      }
+
+      renderFileList();
+    }
+
+    function renderFileList() {
+      var listDiv = document.getElementById('fileList');
+      var btnUpload = document.getElementById('btnUpload');
+
+      if (queue.length === 0) {
+        listDiv.style.display = 'none';
+        btnUpload.disabled = true;
+        return;
+      }
+
+      listDiv.innerHTML = '';
+      listDiv.style.display = 'block';
+      btnUpload.disabled = false;
+
+      queue.forEach((item, index) => {
+        var sizeKb = Math.round(item.file.size / 1024);
+        var sizeText = sizeKb > 1024 ? (sizeKb / 1024).toFixed(1) + ' MB' : sizeKb + ' KB';
+
+        var itemDiv = document.createElement('div');
+        itemDiv.className = 'file-item';
+        itemDiv.innerHTML = `
+          <div class="file-name" title="${item.file.name}">${item.file.name}</div>
+          <div>
+            <span class="file-size">${sizeText}</span>
+            <span class="file-remove" onclick="removerArchivo(${index})">×</span>
+          </div>
+        `;
+        listDiv.appendChild(itemDiv);
+      });
+    }
+
+    function removerArchivo(index) {
+      queue.splice(index, 1);
+      renderFileList();
+    }
+
+    function mostrarAlerta(msg) {
+      var box = document.getElementById('alertBox');
+      box.innerHTML = msg;
+      box.style.display = 'block';
+    }
+
+    function iniciarSubida() {
+      if (queue.length === 0) return;
+
+      document.getElementById('uploadFormScreen').style.display = 'none';
+      document.getElementById('progressScreen').style.display = 'block';
+
+      currentUploadIndex = 0;
+      totalFiles = queue.length;
+      subirSiguiente();
+    }
+
+    function subirSiguiente() {
+      if (currentUploadIndex >= totalFiles) {
+        // Finalizado
+        document.getElementById('progressScreen').style.display = 'none';
+        document.getElementById('successSubmsg').innerText = `Se han subido exitosamente ${totalFiles} archivo(s) Excel a la carpeta "GPS_Pendientes".`;
+        document.getElementById('successScreen').style.display = 'block';
+        return;
+      }
+
+      var item = queue[currentUploadIndex];
+      var file = item.file;
+
+      // Actualizar interfaz de carga
+      var pct = Math.round((currentUploadIndex / totalFiles) * 100);
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressStatus').innerText = "Subiendo: " + file.name;
+      document.getElementById('progressText').innerText = `Archivo ${currentUploadIndex + 1} de ${totalFiles} (${pct}%)`;
+
+      // Leer archivo y enviar a Apps Script
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var dataUrl = e.target.result;
+        var base64 = dataUrl.split(',')[1];
+
+        google.script.run
+          .withSuccessHandler(onUploadSuccess)
+          .withFailureHandler(onUploadFailure)
+          .auditGuardarArchivoGPS(file.name, base64);
+      };
+      
+      reader.onerror = function() {
+        onUploadFailure({ message: "No se pudo leer el archivo local: " + file.name });
+      };
+
+      reader.readAsDataURL(file);
+    }
+
+    function onUploadSuccess(res) {
+      if (res && res.status === 'success') {
+        currentUploadIndex++;
+        // Pequeño retardo para dar fluidez visual al progreso
+        setTimeout(subirSiguiente, 300);
+      } else {
+        onUploadFailure({ message: (res && res.message) || "Error desconocido del servidor." });
+      }
+    }
+
+    function onUploadFailure(err) {
+      document.getElementById('progressScreen').style.display = 'none';
+      document.getElementById('errorMsg').innerText = "Ocurrió un error al subir el archivo \"" + queue[currentUploadIndex].file.name + "\":\n" + err.message;
+      document.getElementById('errorScreen').style.display = 'block';
+    }
+
+    function regresarAFormulario() {
+      document.getElementById('errorScreen').style.display = 'none';
+      document.getElementById('uploadFormScreen').style.display = 'block';
+    }
+
+    function cerrarDialogo() {
+      google.script.host.close();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <style>
+      body { font-family: sans-serif; padding: 20px; }
+      #chart_div { width: 100%; height: 500px; }
+    </style>
+  </head>
+  <body>
+    <h2>Gráfica de Control: Error en Unidades (I-MR)</h2>
+    <div id="chart_div">Cargando datos...</div>
+
+    <script>
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(drawChart);
+
+      function drawChart() {
+        google.script.run.withSuccessHandler(function(data) {
+          var dataTable = new google.visualization.DataTable();
+          dataTable.addColumn('string', 'Proyecto');
+          dataTable.addColumn('number', 'Error %');
+          dataTable.addColumn('number', 'Promedio');
+          dataTable.addColumn('number', 'LCL');
+          dataTable.addColumn('number', 'UCL');
+
+          data.points.forEach(p => {
+            dataTable.addRow([p.name, p.error, data.avg, data.lcl, data.ucl]);
+          });
+
+          var options = {
+            title: 'Desempeño de Estimaciones (Instalaciones)',
+            curveType: 'function',
+            legend: { position: 'bottom' },
+            series: {
+              0: { color: '#4285F4', lineWidth: 2, pointSize: 5 }, // Error
+              1: { color: '#34A853', lineDashStyle: [4, 4] },    // Avg
+              2: { color: '#EA4335', lineWidth: 1 },             // LCL
+              3: { color: '#EA4335', lineWidth: 1 }              // UCL
+            },
+            vAxis: { format: '#%' }
+          };
+
+          var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
+          chart.draw(dataTable, options);
+        }).getProjectData();
+      }
+    </script>
+  </body>
+</html>
