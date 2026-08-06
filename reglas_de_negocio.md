@@ -32,9 +32,11 @@
 - **Diagnóstico:** Genera la radiografía en `Diagnostico_GPS` asociando geocercas, unidades y técnicos.
 - **Borrador de Prueba:** Prellena la hoja borrador `Bitacora_Prueba` para revisión del usuario.
 
-### 3. Traspaso Masivo a `Bitácora Real` (0.3 Segundos)
+### 3. Traspaso Masivo a `Bitácora Real` (0.3 Segundos) + Candado 10:00 PM
 - **Acción Manual:** Al llegar a la oficina, el usuario revisa la `Bitacora_Prueba` y da clic en **`🚀 Procesar GPS en Bitácora Real`**.
+- **Candado Nocturno (10:00 PM):** Si por vacaciones o descuido el usuario no dio clic durante el día, a las 10:00 PM el script detecta las fechas pendientes y realiza el traspaso automáticamente a la Bitácora Real.
 - **Copia Selectiva:** Copia únicamente **22 columnas de valores fijos** (`FECHA`, `PROYECTO`, `NOMBRE`, `Rol`, `DE`, `A`, `UNIDAD`, `ASUNTO`, `JUSTIFICACION`, `NOTA`, `REV`, `HORA DE SALIDA`, `HORA DE ENTRADA`, `TIEMPO RECORRIDO`, `TIEMPO DE PARADAS`, `PARADAS`, `REGRESOS`, `OBSERVACIONES`, `KM`, `HORAS EXTRA`, `HORA SAL PROY`, `HORA LLEG PROY`).
+- **Mapeo Dinámico de Encabezados:** La localización de columnas en la Bitácora se realiza por nombre de encabezado en la Fila 1 (`auditObtenerMapaIndicesBitacora`), permitiendo agregar o mover columnas libremente.
 - **Preservación de Fórmulas:** Las 3 columnas únicas con ecuaciones (`ID` / `q`, `SAP` y `CÁLCULO HORAS`) se preservan intactas. Si se insertan filas nuevas (`SMARTHAUS GASTOS`), se arrastran las ecuaciones automáticamente.
 
 ### 4. Re-Auditorías Automáticas Programadas (`REPORTE ENV.`)

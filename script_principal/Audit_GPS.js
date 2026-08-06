@@ -41,6 +41,69 @@ var AUDIT_COL_BIT_HORAS_EXTRA   = 23;  // Col X ("HORAS EXTRA")
 var AUDIT_COL_BIT_HORA_SAL_PROY = 24;  // Col Y ("HORA SAL PROY")
 var AUDIT_COL_BIT_HORA_LLEG_PROY= 25;  // Col Z ("HORA LLEG PROY")
 
+/**
+ * Resuelve dinámicamente la posición de cada columna en la Bitácora escaneando la fila 1 de encabezados.
+ * Si las columnas son agregadas, movidas o eliminadas, el sistema se adapta automáticamente por nombre.
+ */
+function auditObtenerMapaIndicesBitacora(headers) {
+  var map = {
+    FECHA: AUDIT_COL_BIT_FECHA,
+    PROYECTO: AUDIT_COL_BIT_PROYECTO,
+    NOMBRE: AUDIT_COL_BIT_NOMBRE,
+    ROL: AUDIT_COL_BIT_ROL,
+    DE: AUDIT_COL_BIT_DE,
+    A: AUDIT_COL_BIT_A,
+    CALCULO_HORAS: AUDIT_COL_BIT_CALCULO_HORAS,
+    UNIDAD: AUDIT_COL_BIT_UNIDAD,
+    REPORTE_ENV: AUDIT_COL_BIT_REPORTE_ENV,
+    ASUNTO: AUDIT_COL_BIT_ASUNTO,
+    JUSTIFICACION: AUDIT_COL_BIT_JUSTIFICACION,
+    NOTA: AUDIT_COL_BIT_NOTA,
+    REV: AUDIT_COL_BIT_REV,
+    SALIDA: AUDIT_COL_BIT_SALIDA,
+    ENTRADA: AUDIT_COL_BIT_ENTRADA,
+    TIEMPO_REC: AUDIT_COL_BIT_TIEMPO_REC,
+    TIEMPO_PARADAS: AUDIT_COL_BIT_TIEMPO_PARADAS,
+    PARADAS: AUDIT_COL_BIT_PARADAS,
+    REGRESOS: AUDIT_COL_BIT_REGRESOS,
+    OBSERVACIONES: AUDIT_COL_BIT_OBSERVACIONES,
+    KM: AUDIT_COL_BIT_KM,
+    HORAS_EXTRA: AUDIT_COL_BIT_HORAS_EXTRA,
+    HORA_SAL_PROY: AUDIT_COL_BIT_HORA_SAL_PROY,
+    HORA_LLEG_PROY: AUDIT_COL_BIT_HORA_LLEG_PROY
+  };
+  if (!headers || !headers.length) return map;
+  
+  for (var c = 0; c < headers.length; c++) {
+    var hNorm = auditNormalizar(headers[c]);
+    if (hNorm === 'fecha') map.FECHA = c;
+    else if (hNorm === 'proyecto') map.PROYECTO = c;
+    else if (hNorm === 'nombre') map.NOMBRE = c;
+    else if (hNorm === 'rol') map.ROL = c;
+    else if (hNorm === 'de') map.DE = c;
+    else if (hNorm === 'a') map.A = c;
+    else if (hNorm.indexOf('calculo horas') !== -1) map.CALCULO_HORAS = c;
+    else if (hNorm === 'unidad') map.UNIDAD = c;
+    else if (hNorm.indexOf('reporte env') !== -1) map.REPORTE_ENV = c;
+    else if (hNorm === 'asunto') map.ASUNTO = c;
+    else if (hNorm.indexOf('justificac') !== -1) map.JUSTIFICACION = c;
+    else if (hNorm === 'nota') map.NOTA = c;
+    else if (hNorm === 'rev') map.REV = c;
+    else if (hNorm.indexOf('hora de salida') !== -1) map.SALIDA = c;
+    else if (hNorm.indexOf('hora de entrada') !== -1) map.ENTRADA = c;
+    else if (hNorm.indexOf('tiempo recorrido') !== -1) map.TIEMPO_REC = c;
+    else if (hNorm.indexOf('tiempo de paradas') !== -1) map.TIEMPO_PARADAS = c;
+    else if (hNorm === 'paradas') map.PARADAS = c;
+    else if (hNorm === 'regresos') map.REGRESOS = c;
+    else if (hNorm === 'observaciones') map.OBSERVACIONES = c;
+    else if (hNorm === 'km') map.KM = c;
+    else if (hNorm.indexOf('horas extra') !== -1) map.HORAS_EXTRA = c;
+    else if (hNorm.indexOf('hora sal proy') !== -1) map.HORA_SAL_PROY = c;
+    else if (hNorm.indexOf('hora lleg proy') !== -1) map.HORA_LLEG_PROY = c;
+  }
+  return map;
+}
+
 // Cache de parseo de archivos por ID para velocidad extrema
 var _auditParseCache = {};
 

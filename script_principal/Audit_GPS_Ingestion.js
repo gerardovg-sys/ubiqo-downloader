@@ -159,7 +159,15 @@ function ejecutarForzarDescargaUbiqoGitHub(isSilent) {
     UrlFetchApp.fetch(url, options);
     Logger.log('[GITHUB] 🚀 Solicitud dispatch enviada a GitHub Actions exitosamente.');
     if (ui) {
-      ui.alert('🚀 Solicitud Enviada a GitHub', 'Se ha solicitado a GitHub Actions la descarga inmediata de Ubiqo.', ui.ButtonSet.OK);
+      ui.alert(
+        '🚀 Solicitud Enviada a GitHub Actions',
+        'El robot ha iniciado la descarga del reporte Ubiqo en la nube.\n\n' +
+        'En aproximadamente 45 a 60 segundos el archivo llegará a tu Google Drive y Apps Script ejecutará automáticamente:\n' +
+        '  1. Ingesta a Historial_GPS\n' +
+        '  2. Generación de Diagnostico_GPS\n' +
+        '  3. Prellenado de Bitacora_Prueba',
+        ui.ButtonSet.OK
+      );
     }
   } catch (err) {
     Logger.log('[GITHUB] ⚠️ Error enviando dispatch: ' + err.message);
@@ -168,9 +176,36 @@ function ejecutarForzarDescargaUbiqoGitHub(isSilent) {
 }
 
 /**
+ * Candado Nocturno 10:00 PM:
+ * Si el usuario no presionó el botón durante el día (ej. vacaciones o descuido),
+ * esta función toma automáticamente los datos prellenados de Bitacora_Prueba
+ * y los traspasa a la Bitácora Real de forma silenciosa.
+ */
+function auditVerificarYForzarProcesamientoRealNocturno10PM() {
+  try {
+    var ssConfig = auditObtenerSpreadsheetConfiguracion();
+    var histRes  = auditLeerHistorialPendiente(ssConfig);
+    
+    if (!histRes.datesToProcess || histRes.datesToProcess.length === 0) {
+      Logger.log('[CANDADO 10:00 PM] ✅ No hay filas pendientes en Historial_GPS. La Bitácora fue procesada en el día.');
+      return;
+    }
+    
+    Logger.log('[CANDADO 10:00 PM] ⚠️ Se detectaron fechas pendientes (' + histRes.datesToProcess.join(', ') + '). Ejecutando traspaso automático a Bitácora Real...');
+    
+    // Traspasar a Bitácora Real de forma silenciosa
+    ejecutarProcesamientoGPSCore(false, true);
+    Logger.log('[CANDADO 10:00 PM] ✅ Traspaso nocturno automático a Bitácora Real completado exitosamente.');
+  } catch (e) {
+    Logger.log('[CANDADO 10:00 PM] ❌ Error en candado nocturno 10 PM: ' + e.message);
+  }
+}
+
+/**
  * Crea o actualiza los activadores basados en tiempo:
- * 1. 2:50 AM -> Verificación y rescate de archivo.
- * 2. 3:00 AM -> Cadena completa (Ingesta ➔ Diagnóstico ➔ Prueba).
+ * 1. 02:50 AM -> Verificación y rescate de archivo Ubiqo.
+ * 2. 03:00 AM -> Cadena completa (Ingesta ➔ Diagnóstico ➔ Prueba).
+ * 3. 10:00 PM -> Candado de procesamiento automático a Bitácora Real.
  */
 function crearTriggerIngestaNocturna() {
   var ui = null;
@@ -182,12 +217,13 @@ function crearTriggerIngestaNocturna() {
       var fnName = triggers[i].getHandlerFunction();
       if (fnName === 'ejecutarIngerirArchivosPendientes' || 
           fnName === 'ejecutarCadenaIngestaDiagnosticoPrueba' ||
-          fnName === 'auditVerificarOForzarDescargaNocturna') {
+          fnName === 'auditVerificarOForzarDescargaNocturna' ||
+          fnName === 'auditVerificarYForzarProcesamientoRealNocturno10PM') {
         ScriptApp.deleteTrigger(triggers[i]);
       }
     }
     
-    // Trigger de verificación a las 2:50 AM (2:00 AM + margin)
+    // 1. Trigger de rescate a las 2:50 AM
     ScriptApp.newTrigger('auditVerificarOForzarDescargaNocturna')
       .timeBased()
       .everyDays(1)
@@ -195,19 +231,27 @@ function crearTriggerIngestaNocturna() {
       .nearMinute(50)
       .create();
 
-    // Trigger de la cadena a las 3:00 AM
+    // 2. Trigger de la cadena a las 3:00 AM
     ScriptApp.newTrigger('ejecutarCadenaIngestaDiagnosticoPrueba')
       .timeBased()
       .everyDays(1)
       .atHour(3)
       .create();
 
-    Logger.log('[INGESTA] Activadores nocturnos (2:50 AM Verificación + 3:00 AM Cadena Completa) configurados.');
+    // 3. Trigger del candado nocturno a las 10:00 PM
+    ScriptApp.newTrigger('auditVerificarYForzarProcesamientoRealNocturno10PM')
+      .timeBased()
+      .everyDays(1)
+      .atHour(22)
+      .create();
+
+    Logger.log('[INGESTA] Activadores nocturnos (2:50 AM Rescate + 3:00 AM Cadena + 10:00 PM Candado Real) configurados.');
     if (ui) {
       ui.alert(
         '⏰ Activadores Nocturnos Configurados',
-        '• 2:50 AM: Verificación y rescate si falta archivo en Drive.\n' +
-        '• 3:00 AM: Cadena completa (Ingesta ➔ Diagnóstico ➔ Prellenado Bitacora_Prueba).',
+        '• 02:50 AM: Rescate automático si falta archivo en Drive.\n' +
+        '• 03:00 AM: Cadena completa (Ingesta ➔ Diagnóstico ➔ Prellenado Bitacora_Prueba).\n' +
+        '• 10:00 PM: Candado automático a Bitácora Real (si el encargado no dio clic en el día).',
         ui.ButtonSet.OK
       );
     }
