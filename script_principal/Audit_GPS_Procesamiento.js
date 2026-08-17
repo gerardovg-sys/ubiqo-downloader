@@ -286,6 +286,9 @@ function auditTraspasarPruebaABitacoraReal(ssBitacora, datesToProcess) {
       }
       
       Logger.log('[TRASPASO REAL] ✅ Copiadas ' + pruebaRowsForDate.length + ' filas de la fecha ' + dateStr + ' preservando fórmulas en Bitácora Real.');
+      if (mMap.KM !== undefined && mMap.KM >= 0) {
+        masterSh.getRange(startRowIdx, mMap.KM + 1, pruebaRowsForDate.length, 1).setNumberFormat("0.00");
+      }
     }
   }
 }

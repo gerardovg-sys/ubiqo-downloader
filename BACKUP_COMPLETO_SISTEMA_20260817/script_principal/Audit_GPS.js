@@ -233,6 +233,10 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
     }
     
     fullRange.setValues(allValues);
+    var mBitFinal = auditObtenerMapaIndicesBitacora(fullHeaders);
+    if (mBitFinal.KM !== undefined && mBitFinal.KM >= 0) {
+      sheet.getRange(2, mBitFinal.KM + 1, lastRow - 1, 1).setNumberFormat("0.00");
+    }
   }
 }
 
@@ -984,6 +988,9 @@ function auditInsertarFilaAdministrativa(sheet, targetRowIdx, dateStr, nombre, p
   if (sourceRowIdx > sheet.getLastRow()) sourceRowIdx = targetRowIdx - 1;
   
   var cols = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, cols).getValues()[0];
+  var mBit = auditObtenerMapaIndicesBitacora(headers);
+  
   var sourceRange = sheet.getRange(sourceRowIdx, 1, 1, cols);
   var targetRange = sheet.getRange(targetRowIdx, 1, 1, cols);
   sourceRange.copyTo(targetRange);
@@ -991,28 +998,31 @@ function auditInsertarFilaAdministrativa(sheet, targetRowIdx, dateStr, nombre, p
   var rowValues = targetRange.getValues()[0];
   var rowFormulas = targetRange.getFormulas()[0];
   
-  rowValues[2] = dateStr;
-  rowValues[3] = proyecto;
-  rowValues[4] = nombre;
-  rowValues[5] = rol || "";
-  rowValues[6] = de;
-  rowValues[7] = a;
-  rowValues[9] = unidad;
-  rowValues[10] = "";
-  rowValues[11] = asunto;
-  rowValues[12] = "";
-  rowValues[13] = "";
-  rowValues[14] = "REVISAR";
-  rowValues[15] = ""; rowValues[16] = ""; rowValues[17] = "";
-  rowValues[18] = ""; rowValues[19] = ""; rowValues[20] = "";
-  rowValues[21] = obs;
-  rowValues[22] = ""; rowValues[23] = ""; rowValues[24] = ""; rowValues[25] = "";
-  
-  for (var cIdx = 0; cIdx < rowValues.length; cIdx++) {
-    if (cIdx === 8 && rowFormulas[cIdx]) {
-      rowValues[cIdx] = rowFormulas[cIdx];
+  var formulaNames = ['ID', 'Q', 'SAP', 'CALCULO HORAS', 'CÁLCULO HORAS'];
+  for (var c = 0; c < rowValues.length; c++) {
+    var hNorm = auditNormalizar(headers[c]);
+    var isFormulaCol = false;
+    for (var f = 0; f < formulaNames.length; f++) {
+      if (auditNormalizar(formulaNames[f]) === hNorm) { isFormulaCol = true; break; }
+    }
+    if (isFormulaCol && rowFormulas[c]) {
+      rowValues[c] = rowFormulas[c];
+    } else {
+      rowValues[c] = "";
     }
   }
+  
+  if (mBit.FECHA !== undefined) rowValues[mBit.FECHA] = dateStr;
+  if (mBit.PROYECTO !== undefined) rowValues[mBit.PROYECTO] = proyecto;
+  if (mBit.NOMBRE !== undefined) rowValues[mBit.NOMBRE] = nombre;
+  if (mBit.ROL !== undefined) rowValues[mBit.ROL] = rol || "";
+  if (mBit.DE !== undefined) rowValues[mBit.DE] = de;
+  if (mBit.A !== undefined) rowValues[mBit.A] = a;
+  if (mBit.UNIDAD !== undefined) rowValues[mBit.UNIDAD] = unidad;
+  if (mBit.ASUNTO !== undefined) rowValues[mBit.ASUNTO] = asunto;
+  if (mBit.REV !== undefined) rowValues[mBit.REV] = "REVISAR";
+  if (mBit.OBSERVACIONES !== undefined) rowValues[mBit.OBSERVACIONES] = obs;
+  
   targetRange.setValues([rowValues]);
 }
 
