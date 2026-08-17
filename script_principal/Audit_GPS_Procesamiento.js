@@ -199,36 +199,41 @@ function auditTraspasarPruebaABitacoraReal(ssBitacora, datesToProcess) {
   var masterHeaders = masterSh.getRange(1, 1, 1, masterSh.getLastColumn()).getValues()[0];
   var pruebaHeaders = pruebaSh.getRange(1, 1, 1, pruebaSh.getLastColumn()).getValues()[0];
   
-  // Lista exacta de 22 columnas proporcionadas por el usuario a copiar valores fijos
-  var targetNames = [
-    'FECHA', 'PROYECTO', 'NOMBRE', 'ROL', 'DE', 'A', 'UNIDAD', 'ASUNTO',
-    'JUSTIFICACION', 'JUSTIFICACIÓN', 'NOTA', 'REV', 'HORA DE SALIDA', 'HORA DE ENTRADA',
-    'TIEMPO RECORRIDO', 'TIEMPO DE PARADAS', 'PARADAS', 'REGRESOS', 'OBSERVACIONES',
-    'KM', 'HORAS EXTRA', 'HORA SAL PROY', 'HORA LLEG PROY'
-  ];
+  var pMap = auditObtenerMapaIndicesBitacora(pruebaHeaders);
+  var mMap = auditObtenerMapaIndicesBitacora(masterHeaders);
   
+  var formulaNames = ['ID', 'Q', 'SAP', 'CALCULO HORAS', 'CÁLCULO HORAS'];
+  
+  // Mapa de columnas dinámico: cualquier columna que NO sea de fórmula y exista en ambos lados
   var targetColMap = [];
-  for (var t = 0; t < targetNames.length; t++) {
-    var tNorm = auditNormalizar(targetNames[t]);
-    var pCol = -1;
-    var mCol = -1;
+  for (var m = 0; m < masterHeaders.length; m++) {
+    var hNorm = auditNormalizar(masterHeaders[m]);
+    if (!hNorm) continue;
+    
+    var isFormulaCol = false;
+    for (var f = 0; f < formulaNames.length; f++) {
+      if (auditNormalizar(formulaNames[f]) === hNorm) { isFormulaCol = true; break; }
+    }
+    if (isFormulaCol) continue; // Las fórmulas se preservan / arrastran
+    
+    // Buscar columna correspondiente por nombre en Bitacora_Prueba
     for (var p = 0; p < pruebaHeaders.length; p++) {
-      if (auditNormalizar(pruebaHeaders[p]) === tNorm) { pCol = p; break; }
-    }
-    for (var m = 0; m < masterHeaders.length; m++) {
-      if (auditNormalizar(masterHeaders[m]) === tNorm) { mCol = m; break; }
-    }
-    if (pCol !== -1 && mCol !== -1) {
-      targetColMap.push({ pruebaCol: pCol, masterCol: mCol });
+      if (auditNormalizar(pruebaHeaders[p]) === hNorm) {
+        targetColMap.push({ pruebaCol: p, masterCol: m });
+        break;
+      }
     }
   }
+  
+  var pFechaCol = (pMap.FECHA !== undefined) ? pMap.FECHA : 2;
+  var mFechaCol = (mMap.FECHA !== undefined) ? mMap.FECHA : 2;
   
   for (var dIdx = 0; dIdx < datesToProcess.length; dIdx++) {
     var dateStr = auditNormalizarFechaKey(datesToProcess[dIdx]);
     
     var pruebaRowsForDate = [];
     for (var p = 1; p < pruebaData.length; p++) {
-      var pDate = auditFastNormalizarFechaKey(pruebaData[p][2]);
+      var pDate = auditFastNormalizarFechaKey(pruebaData[p][pFechaCol]);
       if (pDate === dateStr) {
         pruebaRowsForDate.push(pruebaData[p]);
       }
@@ -239,7 +244,7 @@ function auditTraspasarPruebaABitacoraReal(ssBitacora, datesToProcess) {
     var masterData = masterSh.getDataRange().getValues();
     var masterIndices = [];
     for (var m = 1; m < masterData.length; m++) {
-      var mDate = auditFastNormalizarFechaKey(masterData[m][2]);
+      var mDate = auditFastNormalizarFechaKey(masterData[m][mFechaCol]);
       if (mDate === dateStr) {
         masterIndices.push(m);
       }
@@ -254,9 +259,6 @@ function auditTraspasarPruebaABitacoraReal(ssBitacora, datesToProcess) {
         // Insertar filas faltantes en el bloque de la fecha
         masterSh.insertRowsAfter(lastMasterRow, diffRows);
         
-        // Identificar específicamente las 3 columnas únicas con fórmula: ID (q), SAP, CÁLCULO HORAS
-        var formulaNames = ['ID', 'Q', 'SAP', 'CALCULO HORAS', 'CÁLCULO HORAS'];
-        
         for (var c = 1; c <= masterHeaders.length; c++) {
           var hNorm = auditNormalizar(masterHeaders[c - 1]);
           var isFormulaCol = false;
@@ -270,7 +272,7 @@ function auditTraspasarPruebaABitacoraReal(ssBitacora, datesToProcess) {
         }
       }
       
-      // Escribir en bloque los valores de las 22 columnas seleccionadas
+      // Escribir en bloque los valores de todas las columnas de valor dinámicas
       for (var k = 0; k < targetColMap.length; k++) {
         var pColIdx = targetColMap[k].pruebaCol;
         var mColIdx = targetColMap[k].masterCol;

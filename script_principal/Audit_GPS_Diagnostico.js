@@ -89,18 +89,20 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
     if (shBitacoraOriginal) {
       var datosBitacora = shBitacoraOriginal.getDataRange().getValues();
       Logger.log('=== [DIAGNÓSTICO LOG 2] Datos de Bitácora leídos (' + datosBitacora.length + ' filas). Escaneando fechas...');
+      
+      var mBit = auditObtenerMapaIndicesBitacora(datosBitacora[0]);
 
       for (var b = 1; b < datosBitacora.length; b++) {
         var row       = datosBitacora[b];
-        var fFechaRaw = row[AUDIT_COL_BIT_FECHA];
+        var fFechaRaw = (mBit.FECHA !== undefined) ? row[mBit.FECHA] : null;
         if (!fFechaRaw) continue;
 
         var fFecha = auditFastNormalizarFechaKey(fFechaRaw);
         if (!fFecha || datesToProcess.indexOf(fFecha) === -1) continue;
 
-        var fUnidad   = String(row[AUDIT_COL_BIT_UNIDAD] || '').trim();
-        var fProyecto = String(row[AUDIT_COL_BIT_PROYECTO] || '').trim();
-        var fNombre   = String(row[AUDIT_COL_BIT_NOMBRE] || '').trim();
+        var fUnidad   = (mBit.UNIDAD !== undefined) ? String(row[mBit.UNIDAD] || '').trim() : '';
+        var fProyecto = (mBit.PROYECTO !== undefined) ? String(row[mBit.PROYECTO] || '').trim() : '';
+        var fNombre   = (mBit.NOMBRE !== undefined) ? String(row[mBit.NOMBRE] || '').trim() : '';
         var normU     = auditNormalizar(fUnidad);
         var normP     = auditNormalizar(fProyecto);
         var normN     = auditNormalizar(fNombre);
