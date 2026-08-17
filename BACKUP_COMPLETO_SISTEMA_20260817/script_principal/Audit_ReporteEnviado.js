@@ -225,18 +225,25 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
   var contTotal = 0, contSI = 0, contFT = 0, contNO = 0, contNA = 0;
   var huboCambios = false;
 
+  var mBit = auditObtenerMapaIndicesBitacora(datosBitacora[0]);
+  var fechaCol = (mBit.FECHA !== undefined) ? mBit.FECHA : 2;
+  var asuntoCol = (mBit.ASUNTO !== undefined) ? mBit.ASUNTO : 13;
+  var proyectoCol = (mBit.PROYECTO !== undefined) ? mBit.PROYECTO : 3;
+  var nombreCol = (mBit.NOMBRE !== undefined) ? mBit.NOMBRE : 4;
+  var repEnvCol = (mBit.REPORTE_ENV !== undefined) ? mBit.REPORTE_ENV : 12;
+
   for (var b = 1; b < datosBitacora.length; b++) {
     var filaBit     = datosBitacora[b];
-    var fFechaRaw   = filaBit[AUDIT_COL_BIT_FECHA];
+    var fFechaRaw   = filaBit[fechaCol];
     if (!fFechaRaw) continue; // Saltar filas vacías de forma rápida
 
     var fechaBitStr = auditReporteFormatDate(fFechaRaw);
     if (!setFechas[fechaBitStr]) continue;
     contTotal++;
 
-    var asunto   = String(filaBit[AUDIT_COL_BIT_ASUNTO]  || '').trim();
-    var proyecto = String(filaBit[AUDIT_COL_BIT_PROYECTO] || '');
-    var nombre   = String(filaBit[AUDIT_COL_BIT_NOMBRE]   || '');
+    var asunto   = String(filaBit[asuntoCol]   || '').trim();
+    var proyecto = String(filaBit[proyectoCol] || '');
+    var nombre   = String(filaBit[nombreCol]   || '');
 
     var resultado;
 
@@ -277,8 +284,8 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
     }
 
     // Actualizar valor en memoria
-    if (datosBitacora[b][AUDIT_COL_BIT_REPORTE_ENV] !== resultado) {
-      datosBitacora[b][AUDIT_COL_BIT_REPORTE_ENV] = resultado;
+    if (datosBitacora[b][repEnvCol] !== resultado) {
+      datosBitacora[b][repEnvCol] = resultado;
       huboCambios = true;
     }
   }
