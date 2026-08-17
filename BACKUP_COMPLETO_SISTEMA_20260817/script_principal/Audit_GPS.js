@@ -166,29 +166,32 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
   var adminTracker = { startNextRow: null, endNextRow: null };
   
   var dataTemp = sheet.getDataRange().getValues();
+  if (dataTemp.length < 2) return;
+  var mBitInit = auditObtenerMapaIndicesBitacora(dataTemp[0]);
+  
   for (var b = 1; b < dataTemp.length; b++) {
-    var fFecha = auditNormalizarFechaKey(dataTemp[b][AUDIT_COL_BIT_FECHA]);
+    var fFecha = (mBitInit.FECHA !== undefined) ? auditNormalizarFechaKey(dataTemp[b][mBitInit.FECHA]) : '';
     if (fFecha === dateStr) {
-      var fUnidad = String(dataTemp[b][AUDIT_COL_BIT_UNIDAD] || '').trim();
-      var fAsunto = String(dataTemp[b][AUDIT_COL_BIT_ASUNTO] || '').trim();
-      var fProj = auditNormalizar(dataTemp[b][AUDIT_COL_BIT_PROYECTO]);
-      var fDe = String(dataTemp[b][AUDIT_COL_BIT_DE] || '').trim();
-      var fA = String(dataTemp[b][AUDIT_COL_BIT_A] || '').trim();
-      var rowNum = b + 1;
+      var fUnidad = (mBitInit.UNIDAD !== undefined) ? String(dataTemp[b][mBitInit.UNIDAD] || '').trim() : '';
+      var fAsunto = (mBitInit.ASUNTO !== undefined) ? String(dataTemp[b][mBitInit.ASUNTO] || '').trim() : '';
+      var fProj   = (mBitInit.PROYECTO !== undefined) ? auditNormalizar(dataTemp[b][mBitInit.PROYECTO]) : '';
+      var fDe     = (mBitInit.DE !== undefined) ? String(dataTemp[b][mBitInit.DE] || '').trim() : '';
+      var fA      = (mBitInit.A !== undefined) ? String(dataTemp[b][mBitInit.A] || '').trim() : '';
+      var rowNum  = b + 1;
       
       if (fProj === 'smarthaus gastos' && (!fDe || !fA)) {
-        if (!fDe) sheet.getRange(rowNum, 7).setValue("8:00");
-        if (!fA) sheet.getRange(rowNum, 8).setValue("18:00");
+        if (!fDe && mBitInit.DE !== undefined) sheet.getRange(rowNum, mBitInit.DE + 1).setValue("8:00");
+        if (!fA && mBitInit.A !== undefined) sheet.getRange(rowNum, mBitInit.A + 1).setValue("18:00");
       }
       
       if (fUnidad.toUpperCase() === 'NA' && auditNormalizar(fAsunto) === 'proyecto instalacion') {
-        sheet.getRange(rowNum, 7).setValue("8:00");
-        sheet.getRange(rowNum, 8).setValue("18:00");
-        var prevObs = String(dataTemp[b][21] || '').trim();
+        if (mBitInit.DE !== undefined) sheet.getRange(rowNum, mBitInit.DE + 1).setValue("8:00");
+        if (mBitInit.A !== undefined) sheet.getRange(rowNum, mBitInit.A + 1).setValue("18:00");
+        var prevObs = (mBitInit.OBSERVACIONES !== undefined) ? String(dataTemp[b][mBitInit.OBSERVACIONES] || '').trim() : '';
         var warning = "[GPS] REVISAR: Esta partida no tiene unidad asignada.";
         var newObs = prevObs ? (prevObs.indexOf(warning) !== -1 ? prevObs : prevObs + " | " + warning) : warning;
-        sheet.getRange(rowNum, 15).setValue('REVISAR');
-        sheet.getRange(rowNum, 22).setValue(newObs);
+        if (mBitInit.REV !== undefined) sheet.getRange(rowNum, mBitInit.REV + 1).setValue('REVISAR');
+        if (mBitInit.OBSERVACIONES !== undefined) sheet.getRange(rowNum, mBitInit.OBSERVACIONES + 1).setValue(newObs);
       }
     }
   }
@@ -197,9 +200,9 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
   var uniqueTechs = [];
   var seenTechs = {};
   for (var b = 1; b < currentData.length; b++) {
-    var fFecha = auditNormalizarFechaKey(currentData[b][AUDIT_COL_BIT_FECHA]);
+    var fFecha = (mBitInit.FECHA !== undefined) ? auditNormalizarFechaKey(currentData[b][mBitInit.FECHA]) : '';
     if (fFecha !== dateStr) continue;
-    var fNombre = String(currentData[b][AUDIT_COL_BIT_NOMBRE] || '').trim();
+    var fNombre = (mBitInit.NOMBRE !== undefined) ? String(currentData[b][mBitInit.NOMBRE] || '').trim() : '';
     var normN = auditNormalizar(fNombre);
     if (normN && !seenTechs[normN]) {
       seenTechs[normN] = true;
@@ -214,27 +217,22 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
     auditProcesarDiaTecnicoInsertarFilas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, adminTracker);
   }
   
-  for (var t = 0; t < uniqueTechs.length; t++) {
-    var activeTechName = uniqueTechs[t];
-    var currentDataNow = sheet.getDataRange().getValues();
-    var techRows = auditObtenerFilasTecnico(currentDataNow, activeTechName, dateStr);
-    auditProcesarDiaTecnicoInsertarFilas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, adminTracker);
-  }
-  
   var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
   if (lastRow >= 2) {
-    var fullRangeGtoZ = sheet.getRange(2, 7, lastRow - 1, 20);
-    var allValuesGtoZ = fullRangeGtoZ.getValues();
-    var allFormulasGtoZ = fullRangeGtoZ.getFormulas();
+    var fullHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var fullRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
+    var allValues = fullRange.getValues();
+    var allFormulas = fullRange.getFormulas();
     var currentDataFinal = sheet.getDataRange().getValues();
     
     for (var t = 0; t < uniqueTechs.length; t++) {
       var activeTechName = uniqueTechs[t];
       var techRows = auditObtenerFilasTecnico(currentDataFinal, activeTechName, dateStr);
-      auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, allValuesGtoZ, allFormulasGtoZ);
+      auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, allValues, allFormulas, fullHeaders);
     }
     
-    fullRangeGtoZ.setValues(allValuesGtoZ);
+    fullRange.setValues(allValues);
   }
 }
 
@@ -303,7 +301,7 @@ function auditProcesarDiaTecnicoInsertarFilas(sheet, techRows, dateUnitsData, ge
 //  5. PASS 2: ESCRITURA DE MÉTRICAS GPS EN PARTIDAS (BATCH IN-MEMORY)
 // ─────────────────────────────────────────────────────────────
 
-function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, allValuesGtoZ, allFormulasGtoZ) {
+function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, allValues, allFormulas, fullHeaders) {
   var reverseMap = {};
   for (var gpsKey in mapaEquivalencias) {
     reverseMap[auditNormalizar(mapaEquivalencias[gpsKey])] = gpsKey;
@@ -315,6 +313,7 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
 
   Logger.log('=== [METRICAS LOG] Tecnico: ' + techRows[0].nombre + ' (' + gpsRows.length + ' filas en Bitacora) ===');
   
+  var mBit = auditObtenerMapaIndicesBitacora(fullHeaders);
   var isOnlySpecialProject = (gpsRows.length === 1 && (especiales[auditNormalizar(gpsRows[0].proyecto)] || auditEsProyectoInterno(gpsRows[0].proyecto)));
   
   for (var i = 0; i < gpsRows.length; i++) {
@@ -398,7 +397,7 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     var row = gpsRows[i];
     var rowNum = row.index + 1;
     var matrixRowIdx = rowNum - 2;
-    if (matrixRowIdx < 0 || matrixRowIdx >= allValuesGtoZ.length) continue;
+    if (matrixRowIdx < 0 || matrixRowIdx >= allValues.length) continue;
     
     if (auditEsProyectoInterno(row.proyecto)) continue;
     
@@ -408,11 +407,27 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     var res = auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, isFirst, isLast, dateStr, especiales);
     Logger.log('   -> Resultado Fila ' + rowNum + ': HoraSalida="' + res.horaSalida + '", HoraEntrada="' + res.horaEntrada + '", KM=' + res.km + ', Recorrido=' + res.tiempoRecorrido);
     
-    var valuesGtoZ = allValuesGtoZ[matrixRowIdx];
-    var formulasGtoZ = allFormulasGtoZ[matrixRowIdx];
+    var fullRow = allValues[matrixRowIdx];
+    var fullFormulas = allFormulas[matrixRowIdx];
     
-    var currentRev = String(valuesGtoZ[8] || '').trim();
-    var currentObs = String(valuesGtoZ[15] || '').trim();
+    var revIdx        = mBit.REV;
+    var obsIdx        = mBit.OBSERVACIONES;
+    var deIdx         = mBit.DE;
+    var aIdx          = mBit.A;
+    var salidaIdx     = mBit.SALIDA;
+    var entradaIdx    = mBit.ENTRADA;
+    var recIdx        = mBit.TIEMPO_REC;
+    var paradasDurIdx = mBit.TIEMPO_PARADAS;
+    var paradasIdx    = mBit.PARADAS;
+    var regresosIdx   = mBit.REGRESOS;
+    var kmIdx         = mBit.KM;
+    var extraIdx      = mBit.HORAS_EXTRA;
+    var salProyIdx    = mBit.HORA_SAL_PROY;
+    var llegProyIdx   = mBit.HORA_LLEG_PROY;
+    
+    var currentRev = (revIdx !== undefined) ? String(fullRow[revIdx] || '').trim() : '';
+    var currentObs = (obsIdx !== undefined) ? String(fullRow[obsIdx] || '').trim() : '';
+    
     if (res.alertaGeocerca) {
       currentRev = "REVISAR";
       var warning = "[GPS] REVISAR: El vehiculo no visito la geocerca de este proyecto.";
@@ -420,33 +435,32 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     }
     
     var strDeVal = formatDecimalToTime15Min(row.T_de || 8.0);
-    var strAVal = formatDecimalToTime15Min(row.T_a || 18.0);
+    var strAVal  = formatDecimalToTime15Min(row.T_a || 18.0);
     
-    var cleanKm = (res.km && Number(res.km) > 0) ? res.km : "";
-    var cleanTiempoRec = (res.tiempoRecorrido && res.tiempoRecorrido !== "0:00:00" && res.tiempoRecorrido !== "00:00:00") ? res.tiempoRecorrido : "";
+    var cleanKm         = (res.km && Number(res.km) > 0) ? res.km : "";
+    var cleanTiempoRec  = (res.tiempoRecorrido && res.tiempoRecorrido !== "0:00:00" && res.tiempoRecorrido !== "00:00:00") ? res.tiempoRecorrido : "";
     var cleanHorasExtra = (res.horasExtra && Number(res.horasExtra) > 0) ? res.horasExtra : "";
-    var cleanRegresos = (res.regresos && Number(res.regresos) > 0) ? res.regresos : "";
+    var cleanRegresos   = (res.regresos && Number(res.regresos) > 0) ? res.regresos : "";
     
-    valuesGtoZ[0] = strDeVal;
-    valuesGtoZ[1] = strAVal;
-    valuesGtoZ[8] = currentRev || valuesGtoZ[8];
-    valuesGtoZ[9] = res.horaSalida || "";
-    valuesGtoZ[10] = res.horaEntrada || "";
-    valuesGtoZ[11] = cleanTiempoRec;
-    valuesGtoZ[12] = res.tiempoParadas || "";
-    valuesGtoZ[13] = res.paradas || "";
-    valuesGtoZ[14] = cleanRegresos;
-    valuesGtoZ[15] = currentObs;
-    valuesGtoZ[16] = cleanKm;
-    valuesGtoZ[17] = cleanHorasExtra;
-    valuesGtoZ[18] = res.horaSalProy || "";
-    valuesGtoZ[19] = res.horaLlegProy || "";
+    if (deIdx !== undefined) fullRow[deIdx] = strDeVal;
+    if (aIdx !== undefined) fullRow[aIdx] = strAVal;
+    if (revIdx !== undefined) fullRow[revIdx] = currentRev || fullRow[revIdx];
+    if (salidaIdx !== undefined) fullRow[salidaIdx] = res.horaSalida || "";
+    if (entradaIdx !== undefined) fullRow[entradaIdx] = res.horaEntrada || "";
+    if (recIdx !== undefined) fullRow[recIdx] = cleanTiempoRec;
+    if (paradasDurIdx !== undefined) fullRow[paradasDurIdx] = res.tiempoParadas || "";
+    if (paradasIdx !== undefined) fullRow[paradasIdx] = res.paradas || "";
+    if (regresosIdx !== undefined) fullRow[regresosIdx] = cleanRegresos;
+    if (obsIdx !== undefined) fullRow[obsIdx] = currentObs;
+    if (kmIdx !== undefined) fullRow[kmIdx] = cleanKm;
+    if (extraIdx !== undefined) fullRow[extraIdx] = cleanHorasExtra;
+    if (salProyIdx !== undefined) fullRow[salProyIdx] = res.horaSalProy || "";
+    if (llegProyIdx !== undefined) fullRow[llegProyIdx] = res.horaLlegProy || "";
     
-    var colsToPreserve = [2, 3, 4, 5, 6, 7];
-    for (var fIdx = 0; fIdx < colsToPreserve.length; fIdx++) {
-      var kCol = colsToPreserve[fIdx];
-      if (formulasGtoZ[kCol]) {
-        valuesGtoZ[kCol] = formulasGtoZ[kCol];
+    // Preservar fórmulas si existen en alguna celda
+    for (var cIdx = 0; cIdx < fullRow.length; cIdx++) {
+      if (fullFormulas[cIdx]) {
+        fullRow[cIdx] = fullFormulas[cIdx];
       }
     }
   }
