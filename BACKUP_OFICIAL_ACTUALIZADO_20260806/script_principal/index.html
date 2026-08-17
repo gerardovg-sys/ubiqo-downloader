@@ -1,0 +1,2504 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base target="_top">
+    <title>Sistema Smartcorp</title>
+    
+    <!-- Tailwind CSS desde el CDN oficial (requiere cargarse vía URL para inicializar el compilador dinámico JIT en el navegador) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <?!= include('lib_react'); ?>
+    <?!= include('lib_babel'); ?>
+    <?!= include('lib_recharts'); ?>
+    <?!= include('lib_lucide'); ?>
+
+    <style>
+      /* CSS ESPECIAL PARA QUE EL PDF NO SALGA AMONTONADO */
+      @media print {
+        @page { size: landscape; margin: 10mm; }
+        body { background: white !important; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        
+        .print-hidden { display: none !important; }
+        
+        /* Sistema de columnas Flexbox (Grid se amontona en PDF) */
+        .print-row { 
+          display: flex !important; 
+          flex-direction: row !important; 
+          flex-wrap: nowrap !important; 
+          width: 100% !important; 
+          gap: 20px !important; 
+          margin-bottom: 20px !important; 
+        }
+        .print-col-2 { 
+          flex: 1 !important; 
+          width: calc(50% - 10px) !important; 
+          box-sizing: border-box !important; 
+        }
+        
+        /* Control de saltos de página */
+        .print-avoid-break { page-break-inside: avoid !important; break-inside: avoid !important; }
+        .print-page-break { page-break-before: always !important; break-before: page !important; padding-top: 10px !important;}
+        
+        .print-no-shadow { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
+        
+        /* Altura controlada para los gráficos para que no colapsen */
+        .recharts-responsive-container { width: 100% !important; }
+        .print-chart-fixed { height: 250px !important; min-height: 250px !important; }
+      }
+
+      #loader {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: white; z-index: 50; display: flex;
+        justify-content: center; align-items: center;
+        flex-direction: column; color: #64748b;
+      }
+      .toast {
+        position: fixed; bottom: 20px; right: 20px; z-index: 100;
+        animation: slideIn 0.3s ease-out;
+      }
+      @keyframes slideIn {
+        from { transform: translateY(100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+      .processing { opacity: 0.7; cursor: not-allowed; }
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      .animate-fade-in {
+        animation: fadeIn 0.2s ease-out;
+      }
+    </style>
+  </head>
+  <body class="bg-slate-50">
+    <div id="loader">
+      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+      <p style="font-size:14px;color:#64748b;">Iniciando Sistema de Gestión...</p>
+      <p style="font-size:11px;color:#94a3b8;margin-top:4px;">v3.0 — Librerías locales</p>
+    </div>
+    <div id="root"></div>
+
+    <!-- Script de diagnóstico autónomo: no depende de ninguna librería -->
+    <script>
+      window.__hasError = false;
+
+      // Verifica en 8s si React logró montar
+      setTimeout(function() {
+        if (window.__hasError) return; // Si ya hay un error visual en pantalla, no lo sobrescribimos
+        var loader = document.getElementById('loader');
+        var root   = document.getElementById('root');
+        if (!loader || loader.style.display === 'none') return; // Ya cargó OK
+        
+        var reactOk   = typeof window.React !== 'undefined';
+        var reactdomOk= typeof window.ReactDOM !== 'undefined';
+        var babelOk   = typeof window.Babel !== 'undefined';
+        var rechartsOk= typeof window.Recharts !== 'undefined';
+        var lucideOk  = typeof window.lucide !== 'undefined';
+        var rootHtml  = root ? root.innerHTML.trim() : '';
+        
+        loader.innerHTML = '<div style="padding:24px;font-family:sans-serif;text-align:center;max-width:560px;margin:0 auto;">'
+          + '<div style="font-size:36px;margin-bottom:12px;">⚠️</div>'
+          + '<h3 style="color:#1e293b;font-size:16px;margin:0 0 12px;">Diagnóstico v3.1 (8s timeout)</h3>'
+          + '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;text-align:left;">'
+          + '<tr style="background:#f8fafc;"><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">React</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (reactOk ? '#10b981">✓ Cargado' : '#ef4444">✗ No cargado') + '</td></tr>'
+          + '<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">ReactDOM</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (reactdomOk ? '#10b981">✓ Cargado' : '#ef4444">✗ No cargado') + '</td></tr>'
+          + '<tr style="background:#f8fafc;"><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Babel</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (babelOk ? '#10b981">✓ Cargado' : '#ef4444">✗ No cargado') + '</td></tr>'
+          + '<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Recharts</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (rechartsOk ? '#10b981">✓ Cargado' : '#ef4444">✗ No cargado') + '</td></tr>'
+          + '<tr style="background:#f8fafc;"><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">Lucide</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (lucideOk ? '#10b981">✓ Cargado' : '#ef4444">✗ No cargado') + '</td></tr>'
+          + '<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;">#root vacío</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-weight:bold;color:' + (rootHtml==='' ? '#ef4444">Sí (React no montó)' : '#10b981">No (React montó)') + '</td></tr>'
+          + '</table>'
+          + '<button onclick="window.location.reload()" style="padding:8px 20px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer;">Recargar 🔄</button>'
+          + '</div>';
+      }, 8000);
+    </script>
+
+    <script>
+      // Capturador de errores globales de diagnóstico visual
+      window.onerror = function(message, source, lineno, colno, error) {
+        window.__hasError = true;
+        const loader = document.getElementById('loader');
+        if (loader) {
+          loader.innerHTML = `
+            <div style="padding: 30px 20px; color: #ef4444; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; max-width: 600px; margin: 0 auto;">
+              <div style="font-size: 40px; margin-bottom: 15px;">⚠️</div>
+              <h3 style="margin-top: 0; color: #1e293b; font-size: 18px; font-weight: bold;">Error en la Carga del Sistema</h3>
+              <p style="color: #64748b; font-size: 14px; margin-bottom: 20px; line-height: 1.5;">Ocurrió una falla crítica al inicializar el tablero. Esto suele deberse a bloqueos de red con librerías externas o errores de sintaxis.</p>
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; text-align: left; overflow: auto; max-height: 250px; font-family: monospace; font-size: 12px; color: #334155; line-height: 1.6;">
+                <strong>Mensaje:</strong> ${message}<br>
+                <strong>Archivo:</strong> ${source}<br>
+                <strong>Línea:</strong> ${lineno} | <strong>Columna:</strong> ${colno}
+                ${error && error.stack ? `<br><br><strong>Detalles:</strong><pre style="margin: 5px 0 0 0; white-space: pre-wrap; font-size: 11px; color: #64748b;">${error.stack}</pre>` : ''}
+              </div>
+              <button onclick="window.location.reload()" style="margin-top: 25px; padding: 10px 20px; background-color: #4f46e5; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2); transition: background-color 0.2s;">
+                Recargar Página 🔄
+              </button>
+            </div>
+          `;
+          loader.style.display = 'flex';
+        }
+        return false;
+      };
+    </script>
+
+    <script>
+      // Configurar Babel Standalone 8 para usar el runtime clásico de React (evita imports de ES6)
+      if (typeof Babel !== 'undefined') {
+        Babel.registerPreset('custom-react', {
+          presets: [
+            [Babel.availablePresets['react'], { runtime: 'classic' }]
+          ]
+        });
+      }
+    </script>
+
+    <script type="text/babel" data-presets="env,custom-react">
+      const { useState, useMemo, useEffect, useRef, Component } = React;
+      // PARCHE 1: Guard defensivo — si Recharts no cargó (bloqueado por CSP o error de red),
+      // evita que el TypeError aborte todo el bloque Babel. Los componentes renderizan null.
+      const _Recharts = window.Recharts || {};
+      const { 
+        BarChart = () => null,
+        Bar = () => null,
+        XAxis = () => null,
+        YAxis = () => null,
+        CartesianGrid = () => null,
+        Tooltip: RechartsTooltip = () => null,
+        Legend = () => null,
+        ResponsiveContainer = ({ children }) => children,
+        Cell = () => null,
+        ReferenceLine = () => null,
+        LabelList = () => null,
+        ComposedChart = () => null,
+        Scatter = () => null,
+        PieChart = () => null,
+        Pie = () => null
+      } = _Recharts;
+
+      // --- ICONOS ---
+      const Icon = ({ name, size = 20, className }) => {
+        const ref = useRef(null);
+        useEffect(() => {
+          if (!ref.current || !window.lucide) return;
+          const pascalName = name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+          const iconDef = window.lucide.icons[pascalName] || window.lucide.icons[name];
+          if (iconDef) {
+             const svg = window.lucide.createElement(iconDef);
+             svg.setAttribute('width', size);
+             svg.setAttribute('height', size);
+             if(className) svg.setAttribute('class', className);
+             ref.current.innerHTML = '';
+             ref.current.appendChild(svg);
+          }
+        }, [name, size, className]);
+        return <span ref={ref} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}></span>;
+      };
+
+      const Icons = {
+        Calendar: (p) => <Icon name="calendar" {...p}/>,
+        Download: (p) => <Icon name="download" {...p}/>,
+        User: (p) => <Icon name="user" {...p}/>,
+        Briefcase: (p) => <Icon name="briefcase" {...p}/>,
+        CheckCircle: (p) => <Icon name="check-circle-2" {...p}/>,
+        Clock: (p) => <Icon name="clock" {...p}/>,
+        MapPin: (p) => <Icon name="map-pin" {...p}/>,
+        TrendingUp: (p) => <Icon name="trending-up" {...p}/>,
+        Award: (p) => <Icon name="award" {...p}/>,
+        RefreshCw: (p) => <Icon name="refresh-cw" {...p}/>,
+        Play: (p) => <Icon name="play" {...p}/>,
+        Search: (p) => <Icon name="search" {...p}/>,
+        Database: (p) => <Icon name="database" {...p}/>,
+        Loader2: (p) => <Icon name="loader-2" {...p} className="animate-spin"/>,
+        XCircle: (p) => <Icon name="x-circle" {...p}/>,
+        ChevronDown: (p) => <Icon name="chevron-down" {...p}/>,
+        FileText: (p) => <Icon name="file-text" {...p}/>,
+        Copy: (p) => <Icon name="copy" {...p}/>,
+        X: (p) => <Icon name="x" {...p}/>,
+        ClipboardList: (p) => <Icon name="clipboard-list" {...p}/>,
+        AlertTriangle: (p) => <Icon name="alert-triangle" {...p}/>,
+        CheckSquare: (p) => <Icon name="check-square" {...p}/>,
+        LayoutDashboard: (p) => <Icon name="layout-dashboard" {...p}/>,
+        Image: (p) => <Icon name="image" {...p}/>,
+        MessageSquare: (p) => <Icon name="message-square" {...p}/>,
+        ListTodo: (p) => <Icon name="list-todo" {...p}/>,
+        Tag: (p) => <Icon name="tag" {...p}/>,
+        Cpu: (p) => <Icon name="cpu" {...p}/>,
+        Camera: (p) => <Icon name="camera" {...p}/>,
+      };
+
+      // --- UTILS ---
+      const timeToMinutes = (timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string' || timeStr === '00:00') return 0;
+        try { const [h, m] = timeStr.split(':').map(Number); return (h||0)*60 + (m||0); } catch (e) { return 0; }
+      };
+      const minutesToTime = (total) => {
+        if (!total && total !== 0) return '00:00';
+        const h = Math.floor(total / 60); const m = Math.floor(total % 60); 
+        return `${h.toString().padStart(2,'0')}:${Math.round(m).toString().padStart(2,'0')}`;
+      };
+      const timeToDecimal = (timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string' || timeStr === '00:00') return null;
+        const [h, m] = timeStr.split(':').map(Number); return h + (m/60);
+      };
+      const decimalToTimeStr = (decimal) => {
+        if (decimal === null || decimal === undefined) return '';
+        const h = Math.floor(decimal); const m = Math.round((decimal - h) * 60);
+        return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+      };
+      const normalizeDate = (dateStr) => {
+        if (!dateStr) return '';
+        const str = String(dateStr).trim();
+        // Extrae YYYY-MM-DD incluso si viene con T06:00:00.000Z
+        const match = str.match(/^(\d{4})[\-\/](\d{2})[\-\/](\d{2})/);
+        if (match) {
+          return `${match[1]}-${match[2]}-${match[3]}`;
+        }
+        const cleanStr = str.split(' ')[0]; 
+        const parts = cleanStr.split(/[\/\-]/);
+        if (parts.length === 3) {
+          let p1 = parts[0].padStart(2, '0');
+          let p2 = parts[1].padStart(2, '0');
+          let year = parts[2];
+          
+          if (p1.length === 4) {
+            year = p1;
+            p1 = parts[1].padStart(2, '0');
+            p2 = parts[2].padStart(2, '0');
+          }
+          
+          const v1 = parseInt(p1, 10);
+          const v2 = parseInt(p2, 10);
+          let day = p1, month = p2;
+          
+          if (v1 > 12) {
+            day = String(v1).padStart(2, '0');
+            month = String(v2).padStart(2, '0');
+          } else if (v2 > 12) {
+            day = String(v2).padStart(2, '0');
+            month = String(v1).padStart(2, '0');
+          }
+          return `${year}-${month}-${day}`;
+        }
+        return cleanStr; 
+      };
+
+      const parseLocalDate = (dateStr) => {
+        if (!dateStr) return null;
+        const str = String(dateStr).trim();
+        // Intentar YYYY-MM-DD
+        const matchYmd = str.match(/^(\d{4})[\-\/](\d{2})[\-\/](\d{2})/);
+        if (matchYmd) {
+          const year = parseInt(matchYmd[1], 10);
+          const month = parseInt(matchYmd[2], 10);
+          const day = parseInt(matchYmd[3], 10);
+          
+          let y = year, m = month, d = day;
+          if (month > 12) {
+            // Caso donde la fecha viene formateada YYYY-DD-MM por error
+            m = day;
+            d = month;
+          }
+          return new Date(y, m - 1, d);
+        }
+        // Intentar DD/MM/YYYY o MM/DD/YYYY
+        const matchDmy = str.match(/^(\d{1,2})[\-\/](\d{1,2})[\-\/](\d{4})/);
+        if (matchDmy) {
+          const p1 = parseInt(matchDmy[1], 10);
+          const p2 = parseInt(matchDmy[2], 10);
+          const year = parseInt(matchDmy[3], 10);
+          
+          let day, month;
+          if (p1 > 12) {
+            day = p1;
+            month = p2;
+          } else if (p2 > 12) {
+            day = p2;
+            month = p1;
+          } else {
+            day = p1;
+            month = p2; // Por defecto DD/MM/YYYY
+          }
+          return new Date(year, month - 1, day);
+        }
+        // Fallback estándar
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) {
+          return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        }
+        return null;
+      };
+
+      const calculateDeadline = (startDateObj, workingDays, reportDatesSet) => {
+        if (!startDateObj || isNaN(startDateObj.getTime())) return null;
+        if (workingDays <= 0) return startDateObj;
+        
+        let currentDate = new Date(startDateObj);
+        let count = 0;
+        
+        while (count < workingDays) {
+          if (count > 0) {
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+          const dayOfWeek = currentDate.getDay(); // 0 = Domingo, 6 = Sábado
+          const dateISO = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+          
+          const isWorkingDay = (dayOfWeek !== 0 && dayOfWeek !== 6) || (reportDatesSet && reportDatesSet.has(dateISO));
+          
+          if (isWorkingDay) {
+            count++;
+          } else if (count === 0) {
+            currentDate.setDate(currentDate.getDate() + 1);
+          }
+        }
+        return currentDate;
+      };
+
+      const countBusinessDays = (startObj, endObj, reportDatesSet) => {
+        if (!startObj || !endObj || isNaN(startObj.getTime()) || isNaN(endObj.getTime())) return 0;
+        if (startObj.getTime() > endObj.getTime()) return 0;
+        
+        let temp = new Date(startObj);
+        let count = 0;
+        while (temp.getTime() <= endObj.getTime()) {
+          const dayOfWeek = temp.getDay();
+          const dateISO = `${temp.getFullYear()}-${String(temp.getMonth()+1).padStart(2,'0')}-${String(temp.getDate()).padStart(2,'0')}`;
+          
+          const isWorkingDay = (dayOfWeek !== 0 && dayOfWeek !== 6) || (reportDatesSet && reportDatesSet.has(dateISO));
+          if (isWorkingDay) {
+            count++;
+          }
+          temp.setDate(temp.getDate() + 1);
+        }
+        return count;
+      };
+
+      // --- LÓGICA PUNTUACION (25% / 25% / 40% / 10%) ---
+      const calcSalida = (hora) => {
+        const min = timeToMinutes(hora);
+        if(min===0) return null;
+        const lim1 = timeToMinutes('08:20'); const lim2 = timeToMinutes('08:30');
+        if(min <= lim1) return 10;
+        if(min > lim2) return 0;
+        return Math.max(0, 10 - ((min - lim1) * 0.5));
+      };
+      const calcEntrada = (hora) => {
+        const min = timeToMinutes(hora);
+        if(min===0) return null;
+        const opt = timeToMinutes('17:50'); const lim = timeToMinutes('17:40');
+        if(min >= opt) return 10;
+        if(min < lim) return 0;
+        return Math.max(0, 10 - ((opt - min) * 0.5));
+      };
+      const calcReportes = (reps) => {
+        let val=0, sum=0;
+        reps.forEach(r=>{if(!r||r==='NA')return; val++; const t=r.toUpperCase().trim(); if(t==='SI')sum+=1; else if(['FT','FF'].includes(t))sum+=0.5;});
+        return val===0?10:sum*(10/val);
+      };
+
+      // --- COMPONENTE: SEARCHABLE SELECT ---
+      const SearchableSelect = ({ options, value, onChange, placeholder }) => {
+        const [isOpen, setIsOpen] = useState(false);
+        const [search, setSearch] = useState('');
+        const wrapperRef = useRef(null);
+
+        useEffect(() => {
+          const handleClickOutside = (event) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) { setIsOpen(false); setSearch(''); }
+          };
+          document.addEventListener('mousedown', handleClickOutside);
+          return () => document.removeEventListener('mousedown', handleClickOutside);
+        }, []);
+
+        const filteredOptions = options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()));
+
+        return (
+          <div className="relative w-full" ref={wrapperRef}>
+            <div className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm flex justify-between items-center cursor-pointer hover:border-indigo-300 focus-within:ring-2 focus-within:ring-indigo-100" onClick={() => setIsOpen(!isOpen)}>
+              <span className={`truncate ${!value ? 'text-slate-400' : 'text-slate-700'}`}>{value || placeholder || "Seleccionar..."}</span>
+              <Icons.ChevronDown size={16} className="text-slate-400"/>
+            </div>
+            {isOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-hidden flex flex-col">
+                <div className="p-2 border-b border-slate-100">
+                  <div className="flex items-center bg-slate-50 rounded-lg px-2">
+                    <Icons.Search size={14} className="text-slate-400"/>
+                    <input type="text" className="w-full bg-transparent p-2 text-sm outline-none" placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} autoFocus />
+                  </div>
+                </div>
+                <div className="overflow-y-auto custom-scrollbar flex-1">
+                  <div className="px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm text-slate-600 font-bold" onClick={() => { onChange('Todos'); setIsOpen(false); }}>-- Todos --</div>
+                  {filteredOptions.length > 0 ? (
+                    filteredOptions.map(opt => (<div key={opt} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm ${value === opt ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600'}`} onClick={() => { onChange(opt); setIsOpen(false); }}>{opt}</div>))
+                  ) : (<div className="px-3 py-4 text-center text-xs text-slate-400">No hay resultados</div>)}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // --- COMPONENTE: MULTI-SELECT AGRUPADO ---
+      const MultiSelectGrouped = ({ allTechsInLogs, activeList, selected, onChange }) => {
+        const [isOpen, setIsOpen] = useState(false);
+        const ref = useRef(null);
+
+        const activeTechNames = activeList.filter(t => t.estado === 'ACTIVO').map(t => t.nombre);
+        const groupActive = allTechsInLogs.filter(t => activeTechNames.includes(t));
+        const groupInactive = allTechsInLogs.filter(t => !activeTechNames.includes(t));
+
+        useEffect(() => {
+          const handleClickOutside = (event) => { if (ref.current && !ref.current.contains(event.target)) setIsOpen(false); };
+          document.addEventListener('mousedown', handleClickOutside);
+          return () => document.removeEventListener('mousedown', handleClickOutside);
+        }, []);
+
+        const toggleOption = (option) => {
+          let newSelected;
+          if (option === 'Todos') newSelected = ['Todos'];
+          else {
+            const current = selected.filter(s => s !== 'Todos');
+            if (current.includes(option)) newSelected = current.filter(s => s !== option);
+            else newSelected = [...current, option];
+            if (newSelected.length === 0) newSelected = ['Todos'];
+          }
+          onChange(newSelected);
+        };
+
+        const displayValue = selected.includes('Todos') ? 'Todos los técnicos' : selected.length === 1 ? selected[0] : `${selected.length} seleccionados`;
+
+        return (
+          <div className="relative w-full" ref={ref}>
+            <button onClick={() => setIsOpen(!isOpen)} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm text-left flex justify-between items-center hover:border-indigo-300 transition focus:outline-none focus:ring-2 focus:ring-indigo-100">
+              <span className="truncate text-slate-700 font-medium">{displayValue}</span><Icons.ChevronDown size={16} className="text-slate-400"/>
+            </button>
+            {isOpen && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar">
+                <div className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm border-b border-slate-100 ${selected.includes('Todos') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption('Todos')}>
+                  <input type="checkbox" checked={selected.includes('Todos')} readOnly className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" /> <span className="font-bold">Todos</span>
+                </div>
+                {groupActive.length > 0 && (
+                  <React.Fragment>
+                    <div className="px-3 py-1 bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0">Activos</div>
+                    {groupActive.map(op => (
+                      <div key={op} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm pl-4 ${selected.includes(op) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption(op)}>
+                        <input type="checkbox" checked={selected.includes(op)} readOnly className="rounded text-indigo-600" /> <span className="truncate">{op}</span>
+                      </div>
+                    ))}
+                  </React.Fragment>
+                )}
+                {groupInactive.length > 0 && (
+                  <React.Fragment>
+                    <div className="px-3 py-1 bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0 border-t border-slate-200">Historial / Otros</div>
+                    {groupInactive.map(op => (
+                      <div key={op} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm pl-4 ${selected.includes(op) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption(op)}>
+                         <input type="checkbox" checked={selected.includes(op)} readOnly className="rounded text-indigo-600" /> <span className="truncate">{op}</span>
+                      </div>
+                    ))}
+                  </React.Fragment>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // --- COMPONENTE: GALERÍA DE IMÁGENES ---
+      const ImageGallery = ({ reportId, isColumnLayout }) => {
+        const [images, setImages] = useState([]);
+        const [loading, setLoading] = useState(false);
+        const [selectedImage, setSelectedImage] = useState(null);
+
+        useEffect(() => {
+           if(!reportId) return;
+           setLoading(true);
+           if (window.google && window.google.script) {
+             window.google.script.run
+               .withSuccessHandler(imgs => { setImages(imgs); setLoading(false); })
+               .withFailureHandler(() => setLoading(false))
+               .getReportImages(reportId);
+           } else { setLoading(false); }
+        }, [reportId]);
+
+        if(loading) return <div className="text-xs text-slate-400 mt-2 animate-pulse flex items-center gap-1.5"><Icons.Loader2 size={12} className="animate-spin text-indigo-500"/> Buscando evidencia fotográfica...</div>;
+        if(!images || images.length === 0) return <div className="text-xs text-slate-400 italic mt-2">Sin evidencia fotográfica registrada.</div>;
+
+        return (
+          <div className={isColumnLayout ? "mt-2" : "mt-4 border-t border-slate-100 pt-3"}>
+             {!isColumnLayout && <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1">📸 Evidencia Fotográfica</h4>}
+             <div className={isColumnLayout ? "grid grid-cols-2 gap-2" : "grid grid-cols-2 sm:grid-cols-4 gap-2 print:flex print:flex-row print:w-full"}>
+               {images.map((img, i) => (
+                 <div key={i} className="flex flex-col gap-1 group">
+                   <div className="relative overflow-hidden rounded-lg border border-slate-200 shadow-sm cursor-pointer" onClick={() => setSelectedImage(img)}>
+                     <img src={img.thumbnail} className="w-full h-20 object-cover group-hover:scale-105 transition duration-200 print:w-1/4" alt={img.descripcion} />
+                     <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition duration-200 flex items-center justify-center">
+                       <Icons.Search size={14} className="text-white drop-shadow-md"/>
+                     </div>
+                   </div>
+                   {img.descripcion && <span className="text-[9px] text-slate-500 italic mt-0.5 truncate" title={img.descripcion}>{img.descripcion}</span>}
+                 </div>
+               ))}
+             </div>
+
+             {/* LIGHTBOX MODAL */}
+             {selectedImage && (
+               <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col justify-center items-center p-4 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedImage(null)}>
+                 <button onClick={() => setSelectedImage(null)} className="absolute top-4 right-4 text-white/75 hover:text-white bg-white/10 hover:bg-white/20 p-2.5 rounded-full transition focus:outline-none">
+                   <Icons.X size={24}/>
+                 </button>
+                 <div className="max-w-4xl max-h-[80vh] flex flex-col items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                   <img src={selectedImage.src} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-2xl border border-white/10" alt={selectedImage.descripcion} />
+                   {selectedImage.descripcion && (
+                     <div className="bg-black/50 text-white text-xs px-4 py-2.5 rounded-full mt-4 text-center max-w-lg border border-white/5 shadow-md">
+                       {selectedImage.descripcion}
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
+          </div>
+        );
+      };
+
+      // --- COMPONENTE MODAL RESUMEN ---
+      const SummaryModal = ({ isOpen, onClose, data, type }) => {
+        if (!isOpen) return null;
+        const [aiSummary, setAiSummary] = useState(null);
+        const [loadingAi, setLoadingAi] = useState(false);
+
+        useEffect(() => {
+          setAiSummary(null);
+          setLoadingAi(false);
+        }, [isOpen, type, data]);
+
+        let summaryText = "";
+
+        if (type === 'evaluacion') {
+           const { kpi, siteStats, avgs, processed, reports, filters } = data;
+           const techCount = processed ? processed.length : 0;
+           const totalIncidencias = processed ? processed.reduce((acc, curr) => acc + (curr.ret || 0) + (curr.fal || 0) + (curr.reg || 0), 0) : 0;
+           
+           const pad = (str, length) => String(str || '').substring(0, length).padEnd(length, ' ');
+           
+           let reportesText = "";
+           if (reports && reports.length > 0) {
+             reports.forEach(r => {
+               reportesText += `   - ${r.name}: ${r.val} registros\n`;
+             });
+           } else {
+             reportesText += "   - Sin reportes registrados\n";
+           }
+
+           let detailedTableText = `${pad("NOMBRE", 22)} | ${pad("SALIDA", 6)} | ${pad("ENTRADA", 7)} | ${pad("REPS", 5)} | ${pad("PAR", 3)} | ${pad("REG", 3)} | ${pad("RET", 3)} | ${pad("FAL", 3)} | ${pad("FINAL", 5)}\n`;
+           detailedTableText += "-".repeat(85) + "\n";
+           if(processed) {
+             processed.forEach(p => { 
+               detailedTableText += `${pad(p.nombre, 22)} | ${pad(p.sSal.toFixed(1), 6)} | ${pad(p.sEnt.toFixed(1), 7)} | ${pad(p.sRep.toFixed(1), 5)} | ${pad(p.sPar, 3)} | ${pad(p.reg, 3)} | ${pad(p.ret, 3)} | ${pad(p.fal, 3)} | ${pad(p.final.toFixed(2), 5)}\n`; 
+             });
+           }
+
+           summaryText = `RESUMEN EJECUTIVO DE EVALUACIÓN
+========================================
+PERIODO: ${filters?.start} al ${filters?.end}
+PROYECTO: ${filters?.proj}
+TÉCNICOS EVALUADOS: ${techCount}
+
+1. DESEMPEÑO GENERAL
+   - Calificación Promedio Global: ${kpi?.scoreProj.toFixed(2)} / 10
+   - Mejor Desempeño: ${kpi?.top ? kpi.top.nombre : 'N/A'} (${kpi?.top ? kpi.top.final.toFixed(2) : 0})
+   - Promedio Calificación Reportes: ${kpi?.avgRep ? kpi.avgRep.toFixed(2) : 0}
+
+2. DESGLOSE DE REPORTES ENVIADOS
+${reportesText}
+3. PUNTUALIDAD Y TIEMPOS
+   - Promedio Hora Salida (AM): ${decimalToTimeStr(avgs?.avgAM)}
+   - Promedio Hora Entrada (PM): ${decimalToTimeStr(avgs?.avgPM)}
+   - Tiempo Promedio en Sitio: ${siteStats?.sitio} hrs
+   - Hora Llegada Sitio Promedio: ${siteStats?.lleg}
+   - Hora Salida Sitio Promedio: ${siteStats?.sal}
+
+4. INCIDENCIAS OPERATIVAS
+   - Total de Incidencias en Periodo: ${totalIncidencias}
+     (Incluye retardos, faltas y regresos)
+
+5. DETALLE POR TÉCNICO (TABLA COMPLETA)
+${"-".repeat(85)}
+${detailedTableText}
+${"-".repeat(85)}
+
+Generado automáticamente por Tablero de Evaluación`;
+
+        } else {
+          const { reports, project } = data;
+          const statusCounts = {}; let totalHorasExtra = 0; let detailsText = "";
+          if (reports) {
+            reports.forEach(r => {
+              const s = r.estatus || 'Sin Estatus'; statusCounts[s] = (statusCounts[s] || 0) + 1;
+              if(r.cantHorasExtra) totalHorasExtra += (Number(r.cantHorasExtra) || 0);
+              detailsText += `\nFECHA: ${r.fecha}\nACTIVIDADES: ${r.actividades}\nTRABAJO: ${r.descripcion}\nPENDIENTES: ${r.pendientes}\nEQUIPO: ${r.equipo}\nESTATUS: ${r.estatus}\n----------------------------------------\n`;
+            });
+          }
+          const estatusTexto = Object.keys(statusCounts).length > 0 
+            ? Object.entries(statusCounts).map(([k,v]) => `   - ${k}: ${v}`).join('\n')
+            : '   - Sin datos';
+
+          summaryText = `RESUMEN DE PROYECTO (REPORTES DE OBRA)
+========================================
+PROYECTO: ${project}
+TOTAL REPORTES: ${reports ? reports.length : 0}
+
+1. ESTATUS DE AVANCE
+${estatusTexto}
+
+2. MÉTRICAS
+   - Total Horas Extra Reportadas: ${totalHorasExtra}
+   - Última Visita Registrada: ${reports && reports.length ? reports[reports.length-1].fecha : 'N/A'}
+
+3. BITÁCORA DETALLADA DE ACTIVIDADES
+${detailsText || '   - No hay actividades registradas.'}
+
+Generado automáticamente por Sistema Integral`;
+        }
+        
+        const copyToClipboard = (text) => { navigator.clipboard.writeText(text); alert("Copiado al portapapeles"); };
+
+        const fetchAiSummary = () => {
+          if (type !== 'reportes') return;
+          setLoadingAi(true);
+          if (window.google && window.google.script) {
+            window.google.script.run
+              .withSuccessHandler(res => {
+                setAiSummary(res);
+                setLoadingAi(false);
+              })
+              .withFailureHandler(err => {
+                alert("Error de IA: " + (err.message || err));
+                setLoadingAi(false);
+              })
+              .generarResumenInteligente(data.project);
+          } else {
+            setTimeout(() => {
+              setAiSummary("Ejemplo de resumen inteligente de la IA de Gemini: Se completaron los trabajos de cableado y conexionado. Se reportaron 2 horas extras el día lunes por pruebas operativas. Pendientes: montaje del tablero de fuerza.");
+              setLoadingAi(false);
+            }, 1500);
+          }
+        };
+        
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 print-hidden">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                  <Icons.FileText size={24} className="text-indigo-600"/> Resumen de Datos
+                </h2>
+                <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500"><Icons.X size={20}/></button>
+              </div>
+              <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-4">
+                {type === 'reportes' && (
+                  <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-sm font-bold text-indigo-700 flex items-center gap-2">
+                        ✨ Resumen Ejecutivo con Inteligencia Artificial (Gemini)
+                      </h4>
+                      {!aiSummary && !loadingAi && (
+                        <button onClick={fetchAiSummary} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+                          Generar Resumen con IA
+                        </button>
+                      )}
+                    </div>
+                    {loadingAi && (
+                      <div className="flex items-center gap-2 text-xs text-indigo-600 font-medium py-2">
+                        <Icons.Loader2 size={16} className="animate-spin"/> Generando resumen ejecutivo inteligente con la API de Gemini...
+                      </div>
+                    )}
+                    {aiSummary && (
+                      <div className="space-y-2">
+                        <div className="bg-white p-4 rounded-lg border border-indigo-100 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                          {aiSummary}
+                        </div>
+                        <div className="flex justify-end">
+                          <button onClick={() => copyToClipboard(aiSummary)} className="text-xs text-indigo-600 hover:underline font-bold flex items-center gap-1">
+                            <Icons.Copy size={12}/> Copiar Resumen de la IA
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Resumen Estructurado (Tradicional)</h4>
+                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 font-mono text-xs whitespace-pre-wrap text-slate-700 leading-relaxed">
+                    {summaryText}
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={onClose} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Cerrar</button>
+                <button onClick={() => copyToClipboard(summaryText)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+                  <Icons.Copy size={18}/> Copiar Reporte Tradicional
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      class ErrorBoundary extends Component {
+        constructor(props) { super(props); this.state={hasError:false,error:null}; }
+        static getDerivedStateFromError(error){return{hasError:true,error};}
+        render(){ if(this.state.hasError){return(<div className="p-8 m-4 bg-red-50 text-center"><h2 className="text-xl font-bold text-red-600">Error</h2><div className="text-xs text-red-800">{this.state.error && this.state.error.toString()}</div><button onClick={()=>window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white rounded">Recargar</button></div>);} return this.props.children; }
+      }
+
+      // --- APP PRINCIPAL ---
+      function App() {
+        const [activeTab, setActiveTab] = useState('evaluacion');
+        
+        // ESTADOS EVALUACION
+        const [dataEval, setDataEval] = useState([]);
+        const [listActivos, setListActivos] = useState([]); 
+        const [loadingEval, setLoadingEval] = useState(true);
+        const [hasGeneratedEval, setHasGeneratedEval] = useState(false);
+        const [inputsEval, setInputsEval] = useState({ start: '', end: '', tech: ['Todos'], proj: 'Todos' });
+        const [filtersEval, setFiltersEval] = useState({ start: '', end: '', tech: ['Todos'], proj: 'Todos' });
+        
+        // ESTADOS REPORTES
+        const [dataRepo, setDataRepo] = useState([]);
+        const [loadingRepo, setLoadingRepo] = useState(false);
+        const [hasGeneratedRepo, setHasGeneratedRepo] = useState(false);
+        const [selectedRepoProj, setSelectedRepoProj] = useState('');
+        const [dataMaestro, setDataMaestro] = useState([]);
+        const [loadingMaestro, setLoadingMaestro] = useState(false);
+        const [dataPendientes, setDataPendientes] = useState([]);
+        const [dataComentarios, setDataComentarios] = useState([]);
+        const [loadingCompend, setLoadingCompend] = useState(false);
+        const [selectedRepoProjSap, setSelectedRepoProjSap] = useState('');
+        const [resolvedRepoProjName, setResolvedRepoProjName] = useState('');
+        const [ganttMode, setGanttMode] = useState('reducido');
+        
+        const [msg, setMsg] = useState(null);
+        const [showSummary, setShowSummary] = useState(false);
+        const [isProcessing, setIsProcessing] = useState(false);
+
+        const showToast = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg(null), 4000); };
+
+        const fetchEvaluacionData = () => {
+          setLoadingEval(true);
+          if (window.google && window.google.script) {
+            window.google.script.run
+              .withSuccessHandler(res => {
+                 try { setListActivos(JSON.parse(res)); } catch(e){}
+              })
+              .withFailureHandler(err => {
+                 showToast("⚠️ Error al obtener técnicos activos: " + (err.message || err), "error");
+              })
+              .getTecnicosActivos();
+
+            window.google.script.run
+              .withSuccessHandler(res => {
+                const parsed = JSON.parse(res);
+                if (parsed.length > 0) {
+                  const cleanData = parsed.map(item => ({...item, fecha: normalizeDate(item.fecha)}));
+                  setDataEval(cleanData);
+                  const sortedDates = cleanData.map(d => d.fecha).sort();
+                  const lastDate = sortedDates[sortedDates.length - 1];
+                  const firstDayStr = lastDate.substring(0, 7) + '-01'; 
+                  if(!inputsEval.start) {
+                    setInputsEval(prev => ({ ...prev, start: firstDayStr, end: lastDate }));
+                  }
+                  showToast(`✅ Base de datos (Eval) actualizada: ${cleanData.length} registros.`);
+                }
+                setLoadingEval(false);
+              })
+              .withFailureHandler(err => {
+                showToast("⚠️ Error al obtener Bitácora: " + (err.message || err), "error");
+                setLoadingEval(false);
+              })
+              .getDataBitacora();
+          } else {
+            setTimeout(() => { setLoadingEval(false); }, 1000);
+          }
+        };
+
+        useEffect(() => {
+          fetchEvaluacionData();
+          // Ocultar el loader y cancelar el timeout de diagnóstico cuando React monte exitosamente
+          const loader = document.getElementById('loader');
+          if (loader) loader.style.display = 'none';
+          if (window.__diagTimeout) clearTimeout(window.__diagTimeout);
+        }, []);
+
+        useEffect(() => {
+          if (activeTab === 'reportes') {
+             if (dataRepo.length === 0) {
+                setLoadingRepo(true);
+                if (window.google && window.google.script) {
+                   window.google.script.run
+                     .withSuccessHandler(res => {
+                       const parsed = JSON.parse(res);
+                       if (parsed.length > 0) {
+                          const clean = parsed.map(i => ({...i, fecha: normalizeDate(i.fecha)}));
+                          setDataRepo(clean);
+                          showToast(`✅ Reportes: ${clean.length} registros cargados.`);
+                       }
+                       setLoadingRepo(false);
+                     })
+                     .withFailureHandler(err => {
+                       showToast("⚠️ Error al obtener Reportes: " + (err.message || err), "error");
+                       setLoadingRepo(false);
+                     })
+                     .getDataReportes();
+                } else { setLoadingRepo(false); }
+             }
+             if (dataMaestro.length === 0) {
+                setLoadingMaestro(true);
+                if (window.google && window.google.script) {
+                   window.google.script.run
+                     .withSuccessHandler(res => {
+                       const parsed = JSON.parse(res);
+                       if (parsed.length > 0) {
+                          setDataMaestro(parsed);
+                          showToast(`✅ Catálogo Maestro: ${parsed.length} proyectos cargados.`);
+                       }
+                       setLoadingMaestro(false);
+                     })
+                     .withFailureHandler(err => {
+                       showToast("⚠️ Error al obtener Catálogo Maestro: " + (err.message || err), "error");
+                       setLoadingMaestro(false);
+                     })
+                     .getBDProyectosMaestro();
+                } else { setLoadingMaestro(false); }
+             }
+          }
+        }, [activeTab]);
+
+        const uniqueTechs = useMemo(() => ['Todos', ...new Set(dataEval.map(d=>d.nombre))].sort(), [dataEval]);
+        const uniqueProjectsEval = useMemo(() => ['Todos', ...new Set(dataEval.map(d=>d.proyecto))].sort(), [dataEval]);
+        const uniqueProjectsRepo = useMemo(() => {
+          if (dataMaestro.length > 0) {
+            const mappedOptions = dataMaestro.map(m => m.sap ? `[${m.sap}] ${m.proyecto}` : m.proyecto);
+            const maestroProjNames = new Set(dataMaestro.map(m => m.proyecto.toUpperCase().trim()));
+            dataRepo.forEach(r => {
+              if (r.proyecto && !maestroProjNames.has(r.proyecto.toUpperCase().trim())) {
+                mappedOptions.push(r.proyecto);
+              }
+            });
+            return [...new Set(mappedOptions)].sort();
+          }
+          return [...new Set(dataRepo.map(d=>d.proyecto))].sort();
+        }, [dataRepo, dataMaestro]);
+
+        // --- MEMO EVALUACION ---
+        const processedEval = useMemo(() => {
+          const defaultReturn = { 
+            processed: [], top3List: [], rawFilteredData: [], kpi: { scoreProj: 0, top: null, avgRep: 0 }, 
+            charts: { am: [], pm: [] }, reports: [], avgs: { avgAM: 0, avgPM: 0 }, 
+            siteStats: { lleg: '--:--', sal: '--:--', sitio: '--:--' }, 
+            domains: { am: ['auto', 'auto'], pm: ['auto', 'auto'] }, filters: filtersEval 
+          };
+
+          if(!dataEval.length || !hasGeneratedEval) return defaultReturn;
+
+          const searchVal = filtersEval.proj.toUpperCase().trim();
+          const evalMaestroRec = dataMaestro.find(m => 
+            String(m.proyecto).toUpperCase().trim() === searchVal ||
+            String(m.sap).toUpperCase().trim() === searchVal
+          );
+          const evalProjName = evalMaestroRec ? evalMaestroRec.proyecto.toUpperCase().trim() : searchVal;
+          const evalProjSap = evalMaestroRec ? evalMaestroRec.sap.toUpperCase().trim() : '';
+
+          const filtered = dataEval.filter(r => {
+            let p = true;
+            if (filtersEval.proj !== 'Todos') {
+              if (!r.proyecto) {
+                p = false;
+              } else {
+                const logProj = r.proyecto.toUpperCase().trim();
+                p = (logProj === evalProjName || (evalProjSap && logProj === evalProjSap));
+              }
+            }
+            const t = filtersEval.tech.includes('Todos') || filtersEval.tech.includes(r.nombre);
+            const d = filtersEval.proj!=='Todos' || (r.fecha >= filtersEval.start && r.fecha <= filtersEval.end);
+            
+            // EXCLUSIÓN DE PMI PARA JUSTICIA
+            const notPMI = !r.nombre.toUpperCase().includes('PMI');
+            return p && t && d && notPMI;
+          });
+
+          const groups = {}; 
+          const repCounts = {'SI':0,'FT':0,'FF':0,'FT FF':0,'NO':0,'NA':0};
+          
+          filtered.forEach(r => {
+             const rt = r.reporteEnv ? r.reporteEnv.toUpperCase().trim() : 'NA'; 
+             if(repCounts[rt] !== undefined) repCounts[rt]++; 
+             else if(rt === 'FT FF') repCounts['FT FF']++;
+
+             if(!groups[r.nombre]) groups[r.nombre]={re:[], sal:0, salC:0, ent:0, entC:0, reps:[], par:0, reg:0, ret:0, fal:0, hS:0, hE:0, hC:0};
+             const g=groups[r.nombre]; g.re.push(r);
+             
+             const sS=calcSalida(r.horaSalida); if(sS!==null){g.sal+=sS;g.salC++}
+             const sE=calcEntrada(r.horaEntrada); if(sE!==null){g.ent+=sE;g.entC++}
+             
+             g.reps.push(r.reporteEnv);
+             if(!['VACACIONES','PERMISO','INCAPACIDAD'].some(x=>(r.nota||'').toUpperCase().includes(x))) g.par+=(Number(r.tiempoParadas)||0);
+             g.reg+=(Number(r.regresos)||0);
+             const as=(r.asistencia||'').toUpperCase(); if(as==='RETARDO')g.ret++; if(as==='FALTA')g.fal++;
+             if(r.horaSalProy && r.horaLlegProy && r.horaSalProy!=='00:00' && r.horaLlegProy!=='00:00') { g.hS+=timeToMinutes(r.horaLlegProy); g.hE+=timeToMinutes(r.horaSalProy); g.hC++; }
+          });
+
+          const res = Object.keys(groups).map(n=>{
+            const g=groups[n];
+            const c = g.re.length;
+            const scSal=g.salC>0?g.sal/g.salC:10; 
+            const scEnt=g.entC>0?g.ent/g.entC:10;
+            const scRep=calcReportes(g.reps); const scPar=g.par>10?0:10;
+            const pen=(g.reg*0.5)+(g.ret*0.5)+(g.fal*1.0);
+            const safe=(v)=>isNaN(v)?0:v;
+            const final=Math.max(0,(safe(scSal)*0.25 + safe(scEnt)*0.25 + safe(scRep)*0.4 + safe(scPar)*0.1)-pen);
+            const avS=g.hC?g.hS/g.hC:0; const avE=g.hC?g.hE/g.hC:0; const dur=avE>avS?avE-avS:0;
+            // Se pasa registros: c para no romper la variable que se usaba
+            return {nombre:n, registros:c, sSal:scSal, sEnt:scEnt, sRep:scRep, sPar:scPar, reg:g.reg, ret:g.ret, fal:g.fal, final, tLleg:minutesToTime(avS), tSal:minutesToTime(avE), tSitio:dur>0?minutesToTime(dur):'--:--'};
+          }).sort((a,b)=>b.final-a.final);
+
+          // LOGICA DE JUSTICIA
+          // Tomar el que tiene mayor número de asistencias
+          const maxRegistros = res.length > 0 ? Math.max(...res.map(t => t.registros)) : 0;
+          // Si el proyecto duró menos de 4 días, entran todos. Si duró más, exigimos un mínimo de 25% del líder.
+          const umbralJusticia = maxRegistros <= 3 ? 1 : Math.ceil(maxRegistros * 0.25);
+          
+          const validCandidates = res.filter(t => t.registros >= umbralJusticia);
+          const top3List = validCandidates.length > 0 ? validCandidates.slice(0,3) : res.slice(0,3);
+          const top = top3List.length > 0 ? top3List[0] : (res.length > 0 ? res[0] : null);
+
+          let am=[], pm=[];
+          const isMulti = filtersEval.proj==='Todos' && (filtersEval.tech.includes('Todos')||filtersEval.tech.length>1);
+          
+          if (isMulti) {
+            Object.keys(groups).sort().forEach(n => {
+              const g=groups[n];
+              const s = g.re.map(x=>timeToDecimal(x.horaSalida)).filter(v=>v!==null); if(s.length) am.push({label:n, val:s.reduce((a,b)=>a+b,0)/s.length});
+              const e = g.re.map(x=>timeToDecimal(x.horaEntrada)).filter(v=>v!==null); if(e.length) pm.push({label:n, val:e.reduce((a,b)=>a+b,0)/e.length});
+            });
+          } else {
+             const dates = [...new Set(filtered.map(x=>x.fecha))].sort();
+             dates.forEach(d => {
+                const rows = filtered.filter(x=>x.fecha===d);
+                const s = rows.map(x=>timeToDecimal(x.horaSalida)).filter(v=>v!==null); if(s.length) am.push({label:d, val:s.reduce((a,b)=>a+b,0)/s.length});
+                const e = rows.map(x=>timeToDecimal(x.horaEntrada)).filter(v=>v!==null); if(e.length) pm.push({label:d, val:e.reduce((a,b)=>a+b,0)/e.length});
+             });
+          }
+
+          const scoreProj = res.length ? res.reduce((a,b)=>a+b.final,0)/res.length : 0;
+          const avgRep = res.length ? res.reduce((a,b)=>a+b.sRep,0)/res.length : 0;
+          const avgAM = am.length ? am.reduce((a,b)=>a+b.val,0)/am.length : 0;
+          const avgPM = pm.length ? pm.reduce((a,b)=>a+b.val,0)/pm.length : 0;
+          
+          let tL=0, tS=0, tD=0, tC=0; Object.values(groups).forEach(g=>{ if(g.hC>0){tL+=g.hS/g.hC; tS+=g.hE/g.hC; const d=(g.hE/g.hC)-(g.hS/g.hC); tD+=(d>0?d:0); tC++;}});
+          const siteStats = {lleg:tC?minutesToTime(tL/tC):'--', sal:tC?minutesToTime(tS/tC):'--', sitio:tC?minutesToTime(tD/tC):'--'};
+          const repData = ['SI','FT','FF','FT FF','NO','NA'].filter(k=>repCounts[k]>0).map(k=>({name:k, val:repCounts[k]}));
+          const getDomain = (d) => {if(!d.length)return['auto','auto']; const v=d.map(x=>x.val); return [Math.min(...v)-0.2, Math.max(...v)+0.2]};
+
+          return { processed: res, top3List, rawFilteredData: filtered, kpi: {scoreProj, top, avgRep}, charts: {am, pm}, reports: repData, avgs: {avgAM, avgPM}, siteStats, domains: {am:getDomain(am), pm:getDomain(pm)}, filters: filtersEval };
+        }, [dataEval, filtersEval, hasGeneratedEval, dataMaestro]);
+
+        // --- MEMO MASTER RECORD & DEPT ---
+        const selectedMaestroRecord = useMemo(() => {
+          if (!hasGeneratedRepo) return null;
+          let found = null;
+          if (selectedRepoProjSap) {
+            found = dataMaestro.find(m => String(m.sap).toUpperCase().trim() === String(selectedRepoProjSap).toUpperCase().trim());
+          }
+          if (!found && resolvedRepoProjName) {
+            found = dataMaestro.find(m => String(m.proyecto).toUpperCase().trim() === String(resolvedRepoProjName).toUpperCase().trim());
+          }
+          return found;
+        }, [dataMaestro, selectedRepoProjSap, resolvedRepoProjName, hasGeneratedRepo]);
+
+        // --- MEMO MASTER RECORD (VISTA EVALUACIÓN) ---
+        const evalMaestroRecord = useMemo(() => {
+          if (!hasGeneratedEval || !filtersEval.proj || filtersEval.proj === 'Todos' || !dataMaestro.length) return null;
+          const searchVal = String(filtersEval.proj).toUpperCase().trim();
+          return dataMaestro.find(m => 
+            String(m.proyecto).toUpperCase().trim() === searchVal ||
+            String(m.sap).toUpperCase().trim() === searchVal
+          );
+        }, [dataMaestro, filtersEval.proj, hasGeneratedEval]);
+
+        // --- MEMO PERSONAL Y PARTICIPACIÓN (VISTA EVALUACIÓN) ---
+        const evalProjectTechStats = useMemo(() => {
+          if (!hasGeneratedEval || !filtersEval.proj || filtersEval.proj === 'Todos' || dataEval.length === 0 || !dataMaestro.length) return [];
+          
+          const searchVal = filtersEval.proj.toUpperCase().trim();
+          const maestroRec = dataMaestro.find(m => 
+            String(m.proyecto).toUpperCase().trim() === searchVal ||
+            String(m.sap).toUpperCase().trim() === searchVal
+          );
+          const projName = maestroRec ? maestroRec.proyecto.toUpperCase().trim() : searchVal;
+          const projSap = maestroRec ? maestroRec.sap.toUpperCase().trim() : '';
+          
+          const projectLogs = dataEval.filter(r => {
+            if (!r.proyecto) return false;
+            const logProj = r.proyecto.toUpperCase().trim();
+            return logProj === projName || (projSap && logProj === projSap);
+          });
+          
+          const totalLogs = projectLogs.length;
+          if (totalLogs === 0) return [];
+          
+          const techMap = {};
+          projectLogs.forEach(r => {
+            if (!techMap[r.nombre]) {
+              techMap[r.nombre] = { name: r.nombre, count: 0, roles: {} };
+            }
+            techMap[r.nombre].count++;
+            const roleName = r.rol || 'Técnico de Apoyo';
+            techMap[r.nombre].roles[roleName] = (techMap[r.nombre].roles[roleName] || 0) + 1;
+          });
+          
+          return Object.values(techMap).map(t => {
+            let mainRole = 'Técnico de Apoyo';
+            let maxCount = 0;
+            Object.entries(t.roles).forEach(([role, count]) => {
+              if (count > maxCount) {
+                maxCount = count;
+                mainRole = role;
+              }
+            });
+            const pct = (t.count / totalLogs) * 100;
+            return {
+              nombre: t.name,
+              rol: mainRole,
+              asistencias: t.count,
+              porcentaje: pct
+            };
+          });
+        }, [dataEval, filtersEval.proj, hasGeneratedEval, dataMaestro]);
+
+        const evalProjectRawLogs = useMemo(() => {
+          if (!hasGeneratedEval || !filtersEval.proj || filtersEval.proj === 'Todos' || dataEval.length === 0 || !dataMaestro.length) return [];
+          
+          const searchVal = filtersEval.proj.toUpperCase().trim();
+          const maestroRec = dataMaestro.find(m => 
+            String(m.proyecto).toUpperCase().trim() === searchVal ||
+            String(m.sap).toUpperCase().trim() === searchVal
+          );
+          const projName = maestroRec ? maestroRec.proyecto.toUpperCase().trim() : searchVal;
+          const projSap = maestroRec ? maestroRec.sap.toUpperCase().trim() : '';
+          
+          return dataEval.filter(r => {
+            if (!r.proyecto) return false;
+            const logProj = r.proyecto.toUpperCase().trim();
+            return logProj === projName || (projSap && logProj === projSap);
+          }).sort((a,b) => {
+            const dA = parseLocalDate(a.fecha);
+            const dB = parseLocalDate(b.fecha);
+            if (dA && dB) return dA.getTime() - dB.getTime();
+            return (a.fecha || '').localeCompare(b.fecha || '');
+          });
+        }, [dataEval, filtersEval.proj, hasGeneratedEval, dataMaestro]);
+
+        // --- MEMO PERSONAL Y PARTICIPACIÓN ---
+        const projectTechStats = useMemo(() => {
+          if (!hasGeneratedRepo || !resolvedRepoProjName || dataEval.length === 0) return [];
+          
+          const projectLogs = dataEval.filter(r => {
+            if (!r.proyecto) return false;
+            const logProj = r.proyecto.toUpperCase().trim();
+            return logProj === resolvedRepoProjName.toUpperCase().trim() ||
+                   (selectedRepoProjSap && logProj === selectedRepoProjSap.toUpperCase().trim());
+          });
+          
+          const totalLogs = projectLogs.length;
+          if (totalLogs === 0) return [];
+          
+          const techMap = {};
+          projectLogs.forEach(r => {
+            if (!techMap[r.nombre]) {
+              techMap[r.nombre] = { name: r.nombre, count: 0, roles: {} };
+            }
+            techMap[r.nombre].count++;
+            const roleName = r.rol || 'Técnico de Apoyo';
+            techMap[r.nombre].roles[roleName] = (techMap[r.nombre].roles[roleName] || 0) + 1;
+          });
+          
+          return Object.values(techMap).map(t => {
+            let mainRole = 'Técnico de Apoyo';
+            let maxCount = 0;
+            Object.entries(t.roles).forEach(([role, count]) => {
+              if (count > maxCount) {
+                maxCount = count;
+                mainRole = role;
+              }
+            });
+            const pct = (t.count / totalLogs) * 100;
+            return {
+              nombre: t.name,
+              rol: mainRole,
+              asistencias: t.count,
+              porcentaje: pct
+            };
+          }).sort((a,b) => b.asistencias - a.asistencias);
+        }, [dataEval, resolvedRepoProjName, selectedRepoProjSap, hasGeneratedRepo]);
+
+        // --- MEMO REPORTES ---
+        const processedRepo = useMemo(() => {
+          if (!hasGeneratedRepo || !resolvedRepoProjName) return [];
+          return dataRepo.filter(r => r.proyecto.toUpperCase().trim() === resolvedRepoProjName.toUpperCase().trim()).sort((a,b) => {
+            const dateA = parseLocalDate(a.fecha);
+            const dateB = parseLocalDate(b.fecha);
+            if (dateA && dateB) return dateA.getTime() - dateB.getTime();
+            return (a.fecha || '').localeCompare(b.fecha || '');
+          });
+        }, [dataRepo, resolvedRepoProjName, hasGeneratedRepo]);
+
+        // --- MEMO RAW LOGS (VISTA REPORTES) ---
+        const repoProjectRawLogs = useMemo(() => {
+          if (!hasGeneratedRepo || !resolvedRepoProjName || dataEval.length === 0) return [];
+          return dataEval.filter(r => {
+            if (!r.proyecto) return false;
+            const logProj = r.proyecto.toUpperCase().trim();
+            return logProj === resolvedRepoProjName.toUpperCase().trim() ||
+                   (selectedRepoProjSap && logProj === selectedRepoProjSap.toUpperCase().trim());
+          }).sort((a,b) => {
+            const dA = parseLocalDate(a.fecha);
+            const dB = parseLocalDate(b.fecha);
+            if (dA && dB) return dA.getTime() - dB.getTime();
+            return (a.fecha || '').localeCompare(b.fecha || '');
+          });
+        }, [dataEval, resolvedRepoProjName, selectedRepoProjSap, hasGeneratedRepo]);
+
+        // --- CÁLCULO GANTT ---
+        const ganttData = useMemo(() => {
+          if (processedRepo.length === 0) return [];
+          const activityMap = {};
+          processedRepo.forEach(r => {
+            if (!r.actividades) return;
+            const acts = r.actividades.split(',').map(a => a.trim()).filter(Boolean);
+            acts.forEach(a => {
+              if (!activityMap[a]) activityMap[a] = [];
+              activityMap[a].push(r.fecha);
+            });
+          });
+          return Object.keys(activityMap).map(name => {
+            const dates = activityMap[name].sort((a, b) => {
+              const dA = parseLocalDate(a);
+              const dB = parseLocalDate(b);
+              if (dA && dB) return dA.getTime() - dB.getTime();
+              return (a || '').localeCompare(b || '');
+            });
+             return {
+               name,
+               start: dates[0],
+               end: dates[dates.length - 1],
+               activeDates: new Set(dates)
+             };
+          });
+        }, [processedRepo]);
+
+        const ganttTimeline = useMemo(() => {
+          if (processedRepo.length === 0) return { tasks: [], days: [], totalDays: 0, deadlineDateStr: '', deadlineIdx: -1, diasRealesObra: 0, diasConReporte: 0, reportesFaltantes: 0, diasRetraso: 0, monthGroups: [] };
+          
+          // 1. Obtener Fecha de Inicio Planeada (Maestro o primer reporte)
+          let plannedStartStr = selectedMaestroRecord?.fechaInicio || processedRepo[0].fecha;
+          let plannedStart = parseLocalDate(plannedStartStr);
+          if (!plannedStart || isNaN(plannedStart.getTime())) {
+            plannedStartStr = processedRepo[0].fecha;
+            plannedStart = parseLocalDate(plannedStartStr);
+          }
+          
+          // 2. Obtener Duración Estimada en Días Hábiles
+          const plannedDuration = Number(selectedMaestroRecord?.diasEstimados) || 0;
+          
+          // 3. Conjunto de fechas de reportes existentes
+          const reportDatesSet = new Set(processedRepo.map(r => r.fecha));
+          
+          // 3.1. Calcular días en obra desde la Bitácora (asistencias)
+          let evalDatesSet = new Set();
+          if (resolvedRepoProjName && dataEval && dataEval.length > 0) {
+            const projectEvalLogs = dataEval.filter(r => {
+              if (!r.proyecto) return false;
+              const logProj = r.proyecto.toUpperCase().trim();
+              return logProj === resolvedRepoProjName.toUpperCase().trim() ||
+                     (selectedRepoProjSap && logProj === selectedRepoProjSap.toUpperCase().trim());
+            });
+            evalDatesSet = new Set(projectEvalLogs.map(r => r.fecha));
+          }
+          
+          // Unión de fechas en las que hubo algún tipo de actividad (asistencia en bitácora o reporte enviado)
+          const activeDatesSet = new Set([...reportDatesSet, ...evalDatesSet]);
+          
+          let lastRecordedDateStr = '';
+          let firstRecordedDateStr = '';
+          if (activeDatesSet.size > 0) {
+            const sortedDates = [...activeDatesSet].sort();
+            firstRecordedDateStr = sortedDates[0];
+            lastRecordedDateStr = sortedDates[sortedDates.length - 1];
+          }
+          const lastRecordedDate = lastRecordedDateStr ? parseLocalDate(lastRecordedDateStr) : null;
+          const firstRecordedDate = firstRecordedDateStr ? parseLocalDate(firstRecordedDateStr) : null;
+          
+          const diasRealesObra = evalDatesSet.size;
+          const diasConReporte = reportDatesSet.size;
+          
+          // Calcular días de asistencia que no tienen reporte (Trabajos sin reporte)
+          const noReportDates = [...evalDatesSet].filter(d => !reportDatesSet.has(d)).sort();
+          const noReportDatesSet = new Set(noReportDates);
+          const reportesFaltantes = noReportDatesSet.size;
+          
+          // 4. Calcular Fecha Límite Real (Deadline Híbrido)
+          const calculateDeadlineHybrid = (startDateObj, workingDays) => {
+            if (!startDateObj || isNaN(startDateObj.getTime())) return null;
+            if (workingDays <= 0) return startDateObj;
+            
+            let currentDate = new Date(startDateObj);
+            let count = 0;
+            let loopLimit = 0;
+            
+            while (count < workingDays && loopLimit < 1000) {
+              loopLimit++;
+              const dayOfWeek = currentDate.getDay();
+              const dateISO = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+              
+              let isWorkingDay = false;
+              if (lastRecordedDate && currentDate.getTime() <= lastRecordedDate.getTime()) {
+                // Histórico: cuenta si hubo asistencia o reporte de obra
+                isWorkingDay = activeDatesSet.has(dateISO);
+              } else {
+                // Futuro: cuenta si es un día hábil normal (Lunes a Viernes)
+                isWorkingDay = (dayOfWeek !== 0 && dayOfWeek !== 6);
+              }
+              
+              if (isWorkingDay) {
+                count++;
+              }
+              
+              if (count < workingDays) {
+                currentDate.setDate(currentDate.getDate() + 1);
+              }
+            }
+            return currentDate;
+          };
+          
+          const deadlineDate = calculateDeadlineHybrid(plannedStart, plannedDuration);
+          const deadlineDateStr = deadlineDate ? `${deadlineDate.getFullYear()}-${String(deadlineDate.getMonth()+1).padStart(2,'0')}-${String(deadlineDate.getDate()).padStart(2,'0')}` : '';
+          
+          // 5. Determinar Rango del Gantt (extender para cubrir fecha de inicio planeada, reportes reales, deadline y fechas de asistencia)
+          const actualStart = parseLocalDate(processedRepo[0]?.fecha || plannedStartStr);
+          const actualEnd = parseLocalDate(processedRepo[processedRepo.length - 1]?.fecha || plannedStartStr);
+          
+          let startProj = plannedStart || actualStart || firstRecordedDate;
+          if (actualStart && startProj && actualStart.getTime() < startProj.getTime()) {
+            startProj = actualStart;
+          }
+          if (firstRecordedDate && startProj && firstRecordedDate.getTime() < startProj.getTime()) {
+            startProj = firstRecordedDate;
+          }
+          
+          let endProj = actualEnd || deadlineDate || lastRecordedDate;
+          if (deadlineDate && endProj && deadlineDate.getTime() > endProj.getTime()) {
+            endProj = deadlineDate;
+          }
+          if (lastRecordedDate && endProj && lastRecordedDate.getTime() > endProj.getTime()) {
+            endProj = lastRecordedDate;
+          }
+          
+          if (!startProj || !endProj || isNaN(startProj.getTime()) || isNaN(endProj.getTime())) {
+            return { tasks: [], days: [], totalDays: 0, deadlineDateStr: '', deadlineIdx: -1, diasRealesObra: 0, diasConReporte: 0, reportesFaltantes: 0, diasRetraso: 0, monthGroups: [] };
+          }
+          
+          // 6. Generar línea de tiempo (según el modo seleccionado: reducido o ampliado)
+          const days = [];
+          const daysOfWeek = ['D', 'L', 'M', 'MI', 'J', 'V', 'S'];
+          const monthNames = [
+            'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+            'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+          ];
+          let tempDate = new Date(startProj);
+          let colIndex = 0;
+          let calendarLimit = 0;
+          let deadlineIdx = -1;
+          
+          while (tempDate.getTime() <= endProj.getTime() && calendarLimit < 1000) {
+            calendarLimit++;
+            const dateISO = `${tempDate.getFullYear()}-${String(tempDate.getMonth()+1).padStart(2,'0')}-${String(tempDate.getDate()).padStart(2,'0')}`;
+            const dayOfWeek = tempDate.getDay();
+            
+            let isDayPresent = false;
+            if (ganttMode === 'reducido') {
+              if (lastRecordedDate && tempDate.getTime() <= lastRecordedDate.getTime()) {
+                // Histórico: solo se muestra la columna si hubo actividad real (asistencia o reporte)
+                isDayPresent = activeDatesSet.has(dateISO);
+              } else {
+                // Futuro: se muestran todas las columnas de lunes a viernes
+                isDayPresent = (dayOfWeek !== 0 && dayOfWeek !== 6);
+              }
+            } else {
+              // Modo Ampliado: se muestran todos los días naturales del calendario sin omitir ninguno
+              isDayPresent = true;
+            }
+            
+            if (isDayPresent) {
+              if (deadlineDateStr && dateISO === deadlineDateStr) {
+                deadlineIdx = colIndex;
+              }
+              
+              const mName = `${monthNames[tempDate.getMonth()]} ${tempDate.getFullYear()}`;
+              days.push({
+                index: colIndex,
+                dayNum: tempDate.getDate(),
+                dayName: daysOfWeek[dayOfWeek],
+                dateStr: `${String(tempDate.getDate()).padStart(2, '0')}/${String(tempDate.getMonth() + 1).padStart(2, '0')}`,
+                isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+                dateISO: dateISO,
+                isAfterDeadline: deadlineDate ? tempDate.getTime() > deadlineDate.getTime() : false,
+                monthYearLabel: mName
+              });
+              colIndex++;
+            }
+            tempDate.setDate(tempDate.getDate() + 1);
+          }
+          
+          // Agrupar columnas por mes para cabecera del Gantt
+          const monthGroups = [];
+          if (days.length > 0) {
+            let currentGroup = { name: days[0].monthYearLabel, count: 1 };
+            for (let i = 1; i < days.length; i++) {
+              if (days[i].monthYearLabel === currentGroup.name) {
+                currentGroup.count++;
+              } else {
+                monthGroups.push(currentGroup);
+                currentGroup = { name: days[i].monthYearLabel, count: 1 };
+              }
+            }
+            monthGroups.push(currentGroup);
+          }
+          
+          const rawTasks = [...ganttData];
+          if (noReportDates.length > 0) {
+            rawTasks.push({
+              name: 'Trabajos sin reporte',
+              start: noReportDates[0],
+              end: noReportDates[noReportDates.length - 1],
+              activeDates: noReportDatesSet,
+              isNoReportVirtual: true
+            });
+          }
+          
+          // 7. Mapear actividades y asociar sus días laborados reales y set de fechas activas
+          const tasks = rawTasks.map(task => {
+            const taskStartISO = task.start;
+            const taskEndISO = task.end;
+            
+            let startIdx = days.findIndex(d => d.dateISO === taskStartISO);
+            let endIdx = days.findIndex(d => d.dateISO === taskEndISO);
+            
+            let left = 0;
+            let duration = 1;
+            
+            if (startIdx !== -1) {
+              left = startIdx;
+              if (endIdx !== -1 && endIdx >= startIdx) {
+                duration = endIdx - startIdx + 1;
+              }
+            } else {
+              // Si la fecha de inicio del reporte cayó en un día no laboral/no activo, buscamos el primer día hábil posterior
+              const postDays = days.filter(d => d.dateISO >= taskStartISO);
+              if (postDays.length > 0) {
+                left = postDays[0].index;
+                const endIdxPost = days.findIndex(d => d.dateISO === taskEndISO);
+                if (endIdxPost !== -1 && endIdxPost >= left) {
+                  duration = endIdxPost - left + 1;
+                }
+              }
+            }
+            
+            const isNoReportTask = !!task.isNoReportVirtual;
+            const taskEnd = parseLocalDate(task.end);
+            const isDelayed = !isNoReportTask && plannedDuration > 0 && deadlineDate ? (taskEnd && taskEnd.getTime() > deadlineDate.getTime()) : false;
+            
+            return {
+              name: task.name,
+              start: task.start,
+              end: task.end,
+              left: left,
+              duration: duration,
+              workingDays: task.activeDates ? task.activeDates.size : 1,
+              isDelayed: isDelayed,
+              activeDates: task.activeDates || new Set(),
+              isNoReportVirtual: isNoReportTask
+            };
+          });
+          
+          // 8. Calcular días de retraso del proyecto global (contando días activos trabajados después del deadline)
+          let diasRetraso = 0;
+          if (plannedDuration > 0 && deadlineDate && lastRecordedDate && lastRecordedDate.getTime() > deadlineDate.getTime()) {
+            diasRetraso = [...activeDatesSet].filter(d => d > deadlineDateStr && d <= lastRecordedDateStr).length;
+          }
+          
+          return { tasks, days, totalDays: days.length, deadlineDateStr, deadlineIdx, diasRealesObra, diasRetraso, diasConReporte, reportesFaltantes, monthGroups };
+        }, [ganttData, processedRepo, selectedMaestroRecord, selectedRepoProjSap, dataEval, resolvedRepoProjName, ganttMode]);
+
+        const repoKpis = useMemo(() => {
+          if (processedRepo.length === 0) return { totalVisitas: 0, totalHorasExtra: 0, estatus: 'N/A', incidenciasCount: 0 };
+          const totalVisitas = processedRepo.length;
+          const totalHorasExtra = processedRepo.reduce((acc, r) => acc + (Number(r.cantHorasExtra) || 0), 0);
+          const estatus = processedRepo[processedRepo.length - 1]?.estatus || 'EN PROCESO';
+          const incidenciasCount = processedRepo.filter(r => r.incidencias && r.incidencias !== 'NO').length;
+          return { totalVisitas, totalHorasExtra, estatus, incidenciasCount };
+        }, [processedRepo]);
+
+        const COLORS = { 'SI':'#10B981', 'FT':'#6366F1', 'FF':'#8B5CF6', 'FT FF':'#EF4444', 'NO':'#EF4444', 'NA':'#9CA3AF' };
+        const GRADIENTS = [
+          'from-indigo-400 to-indigo-600 shadow-indigo-100 text-indigo-950',
+          'from-teal-400 to-teal-600 shadow-teal-100 text-teal-950',
+          'from-violet-400 to-violet-600 shadow-violet-100 text-violet-950',
+          'from-amber-400 to-amber-600 shadow-amber-100 text-amber-950',
+          'from-rose-400 to-rose-600 shadow-rose-100 text-rose-950',
+          'from-emerald-400 to-emerald-600 shadow-emerald-100 text-emerald-950',
+          'from-sky-400 to-sky-600 shadow-sky-100 text-sky-950',
+          'from-orange-400 to-orange-600 shadow-orange-100 text-orange-950',
+          'from-blue-400 to-blue-600 shadow-blue-100 text-blue-950',
+          'from-pink-400 to-pink-600 shadow-pink-100 text-pink-950'
+        ];
+        
+        const { processed, top3List, kpi, charts, reports, avgs, siteStats, domains } = processedEval;
+        
+        // --- AQUÍ ESTÁ EL AJUSTE DE ALTURA DINÁMICA (MAS ESPACIO PARA NOMBRES) ---
+        const dynamicHeightPunt = charts && charts.am ? Math.max(350, charts.am.length * 40) : 350;
+        const dynamicHeightRank = processed ? Math.max(300, processed.length * 40) : 300;
+
+        return (
+          <div className="min-h-screen p-4 md:p-8 bg-slate-50">
+            {msg && <div className={`toast px-4 py-3 rounded-lg shadow-lg text-white font-medium flex items-center gap-2 ${msg.type==='error'?'bg-red-500':'bg-emerald-600'}`}><span>{msg.text}</span></div>}
+            
+            <SummaryModal isOpen={showSummary} onClose={()=>setShowSummary(false)} 
+              data={activeTab==='evaluacion' ? processedEval : { reports: processedRepo, project: selectedRepoProj }} 
+              type={activeTab} />
+
+            {/* HEADER TABS */}
+            <div className="mb-6 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden print-hidden">
+              <div className="p-6 pb-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                <h1 className="text-3xl font-bold text-slate-800">Sistema Integral</h1>
+                <div className="flex gap-2">
+                  <button onClick={fetchEvaluacionData} className="p-2 text-slate-400 hover:text-blue-500 transition border border-slate-200 rounded-lg"><Icons.RefreshCw size={20}/></button>
+                  <button onClick={()=>window.print()} className="flex gap-2 bg-slate-800 text-white px-4 py-2 rounded-lg hover:bg-slate-900"><Icons.Download size={18}/> PDF</button>
+                </div>
+              </div>
+              <div className="flex border-t border-slate-100">
+                <button onClick={() => setActiveTab('evaluacion')} className={`flex-1 py-4 text-center font-bold flex justify-center items-center gap-2 transition ${activeTab==='evaluacion' ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}><Icons.LayoutDashboard size={20}/> Evaluación Desempeño</button>
+                <button onClick={() => setActiveTab('reportes')} className={`flex-1 py-4 text-center font-bold flex justify-center items-center gap-2 transition ${activeTab==='reportes' ? 'bg-indigo-50 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}><Icons.ClipboardList size={20}/> Reportes de Obra</button>
+              </div>
+            </div>
+
+            {/* VISTA EVALUACION */}
+            {activeTab === 'evaluacion' && (
+              <div className="fade-in">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mb-6 print-hidden">
+                  <div className={`col-span-12 md:col-span-4 bg-white p-4 rounded-xl border border-slate-200 ${inputsEval.proj!=='Todos'?'opacity-50 pointer-events-none':''}`}>
+                    <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Periodo</label>
+                    <div className="flex gap-4"><input type="date" value={inputsEval.start} onChange={e=>setInputsEval({...inputsEval, start: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded p-2 text-sm"/><input type="date" value={inputsEval.end} onChange={e=>setInputsEval({...inputsEval, end: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded p-2 text-sm"/></div>
+                  </div>
+                  <div className="col-span-12 md:col-span-6 grid grid-cols-2 gap-4">
+                    <div className="bg-white p-4 rounded-xl border border-slate-200">
+                      <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Técnico</label>
+                      <MultiSelectGrouped allTechsInLogs={uniqueTechs} activeList={listActivos} selected={inputsEval.tech} onChange={val => setInputsEval({...inputsEval, tech: val})} />
+                    </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200"><label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Proyecto</label><SearchableSelect options={uniqueProjectsEval} value={inputsEval.proj === 'Todos' ? '' : inputsEval.proj} onChange={val => setInputsEval({...inputsEval, proj: val || 'Todos'})} placeholder="Buscar Proyecto..." /></div>
+                  </div>
+                  <div className="col-span-12 md:col-span-2 flex items-stretch">
+                    <button onClick={() => { if(!dataEval.length) return showToast("Sin datos","error"); setIsProcessing(true); setTimeout(() => { setFiltersEval(inputsEval); setHasGeneratedEval(true); setIsProcessing(false); }, 500); }} disabled={isProcessing} className={`w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition flex flex-col items-center justify-center gap-2 ${isProcessing ? 'processing' : ''}`}>{isProcessing ? <Icons.Loader2 size={24}/> : <Icons.Play size={24}/>} {isProcessing ? '...' : 'GENERAR'}</button>
+                  </div>
+                </div>
+
+                {loadingEval ? <div className="text-center py-20 text-slate-400 animate-pulse">Conectando Bitácora...</div> : !hasGeneratedEval ? (
+                  <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed print-hidden"><div className="inline-block p-4 bg-indigo-50 rounded-full mb-4"><Icons.Database size={32} className="text-indigo-400"/></div><h3 className="text-xl font-bold text-slate-700">Listo para evaluar</h3><p className="text-slate-400 mt-2">{dataEval.length} registros disponibles.</p></div>
+                ) : (
+                  <React.Fragment>
+                    <div className="flex justify-between mb-4 print-hidden">
+                      <button onClick={()=> { setInputsEval({ start: inputsEval.start, end: inputsEval.end, tech: ['Todos'], proj: 'Todos' }); setHasGeneratedEval(false); }} className="text-sm text-slate-400 hover:text-indigo-600 flex items-center gap-1 border px-3 py-1 rounded-lg bg-white"><Icons.XCircle size={16}/> Limpiar Filtros</button>
+                      <button onClick={()=>setShowSummary(true)} className="text-sm text-indigo-600 font-bold hover:underline flex items-center gap-1"><Icons.FileText size={16}/> Ver Resumen Texto</button>
+                    </div>
+
+                    {evalMaestroRecord && (
+                      <div className="space-y-4 mb-6 print-hidden">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                            <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                              <Icons.Calendar size={20}/>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Fecha Inicio</span>
+                              <span className="text-xs font-extrabold text-slate-700 block truncate">{evalMaestroRecord.fechaInicio || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                            <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                              <Icons.Tag size={20}/>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Categoría</span>
+                              <span className="text-xs font-extrabold text-slate-700 block truncate" title={evalMaestroRecord.catProyecto}>{evalMaestroRecord.catProyecto || 'N/A'}</span>
+                            </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                            <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
+                              <Icons.User size={20}/>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Vendedor</span>
+                              <span className="text-[11px] font-extrabold text-slate-700 block leading-tight break-words animate-fade-in" title={evalMaestroRecord.vendedor}>
+                                {evalMaestroRecord.vendedor || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                            <div className="p-3 bg-violet-50 text-violet-600 rounded-xl">
+                              <Icons.Award size={20}/>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Encargado Obra</span>
+                              <span className="text-[11px] font-extrabold text-slate-700 block leading-tight break-words" title={evalMaestroRecord.encargado}>
+                                {evalMaestroRecord.encargado || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                            <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                              <Icons.Cpu size={20}/>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Unidades Est/Tot</span>
+                              <span className="text-xs font-extrabold text-slate-700 block">{evalMaestroRecord.unidadesEstimadas || '0'} / {evalMaestroRecord.unidadesTotales || '0'}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="hidden print-block mb-6 text-center">
+                      <h1 className="text-2xl font-bold">Evaluación de Desempeño: {filtersEval.proj !== 'Todos' ? filtersEval.proj : 'Global'}</h1>
+                      <p className="text-slate-500">Periodo evaluado: {filtersEval.start} al {filtersEval.end}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 print-row gap-6 mb-6">
+                      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 print-no-shadow print-col-2 rounded-xl p-6 text-white print:text-slate-800 shadow-lg flex justify-between items-center"><div><p className="text-indigo-100 print:text-slate-500 font-medium mb-1">Mejor Desempeño</p><h2 className="text-2xl font-bold">{kpi.top?.nombre||'N/A'}</h2></div><div className="text-right"><span className="text-4xl font-bold">{kpi.top?.final.toFixed(2)||0}</span></div></div>
+                      <div className="bg-gradient-to-r from-blue-500 to-cyan-600 print-no-shadow print-col-2 rounded-xl p-6 text-white print:text-slate-800 shadow-lg flex justify-between items-center"><div><p className="text-blue-100 print:text-slate-500 font-medium mb-1">Promedio General</p><h2 className="text-2xl font-bold">{filtersEval.proj}</h2></div><div className="text-right"><span className="text-4xl font-bold">{kpi.scoreProj.toFixed(2)}</span></div></div>
+                    </div>
+                    
+                    {/* GRÁFICOS TIEMPO - APLICANDO ALTURA DINÁMICA INDIVIDUAL */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-no-shadow print-avoid-break">
+                      <h3 className="font-bold text-slate-700 mb-4 flex gap-2"><Icons.Clock size={18} className="text-slate-500"/> Puntualidad</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 print-row gap-6">
+                        
+                        <div className="border rounded-lg p-3 bg-orange-50/10 print-col-2 flex flex-col" style={{ height: dynamicHeightPunt }}>
+                          <p className="text-xs font-bold text-orange-600 text-center mb-2">Salida AM (Prom: {decimalToTimeStr(avgs.avgAM)})</p>
+                          {charts.am && charts.am.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%"><ComposedChart layout="vertical" data={charts.am} margin={{top:10,right:20,bottom:10,left:10}}><CartesianGrid strokeDasharray="3 3" horizontal vertical/> <XAxis type="number" domain={domains.am} tickCount={6} tickFormatter={decimalToTimeStr}/> <YAxis type="category" dataKey="label" width={110} tick={{fontSize:10}}/> <RechartsTooltip/> <ReferenceLine x={8.33} stroke="#F97316"/> <Scatter dataKey="val" fill="#F97316" isAnimationActive={false}/></ComposedChart></ResponsiveContainer>
+                          ) : <div className="flex-1 flex justify-center items-center text-xs text-slate-400">Sin datos</div>}
+                        </div>
+                        
+                        <div className="border rounded-lg p-3 bg-blue-50/10 print-col-2 flex flex-col" style={{ height: dynamicHeightPunt }}>
+                          <p className="text-xs font-bold text-blue-600 text-center mb-2">Entrada PM (Prom: {decimalToTimeStr(avgs.avgPM)})</p>
+                          {charts.pm && charts.pm.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%"><ComposedChart layout="vertical" data={charts.pm} margin={{top:10,right:20,bottom:10,left:10}}><CartesianGrid strokeDasharray="3 3" horizontal vertical/> <XAxis type="number" domain={domains.pm} tickCount={6} tickFormatter={decimalToTimeStr}/> <YAxis type="category" dataKey="label" width={110} tick={{fontSize:10}}/> <RechartsTooltip/> <ReferenceLine x={17.83} stroke="#3B82F6"/> <Scatter dataKey="val" fill="#3B82F6" isAnimationActive={false}/></ComposedChart></ResponsiveContainer>
+                          ) : <div className="flex-1 flex justify-center items-center text-xs text-slate-400">Sin datos</div>}
+                        </div>
+                        
+                      </div>
+                    </div>
+                    
+                    {/* RESTO EVAL */}
+                    <div className="grid grid-cols-1 xl:grid-cols-2 print-row gap-6 mb-6 print-avoid-break">
+                       <div className="bg-white p-5 rounded-2xl border border-slate-200 h-64 print-no-shadow print-col-2 print-chart-fixed"><h3 className="font-bold text-slate-700 mb-2 flex gap-2"><Icons.Award size={18} className="text-yellow-500"/> Top 3 Líderes</h3><div className="h-full pb-6">{top3List && top3List.length > 0 ? <ResponsiveContainer><BarChart data={top3List} layout="vertical" margin={{left:0,right:20}}><XAxis type="number" domain={[0,10]} hide/> <YAxis type="category" dataKey="nombre" width={70} tick={{fontSize:11,fontWeight:'bold'}}/> <Bar dataKey="final" barSize={20} radius={[0,4,4,0]} fill="#F59E0B" isAnimationActive={false}><LabelList dataKey={d=>d.final.toFixed(2)} position="right" fontSize={11} fontWeight="bold"/></Bar></BarChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos</div>}</div></div>
+                       
+                       <div className="bg-white p-5 rounded-2xl border border-slate-200 h-64 print-no-shadow print-col-2 print-chart-fixed">
+                         <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.CheckCircle size={18} className="text-indigo-500"/> Reportes</h3><span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded font-bold">Calif. Prom: {kpi.avgRep ? kpi.avgRep.toFixed(2) : 0}/10</span></div>
+                         <div className="h-full pb-6">{reports && reports.length > 0 ? <ResponsiveContainer><PieChart margin={{top:4,right:4,bottom:4,left:4}}><Pie data={reports} dataKey="val" nameKey="name" cx="50%" cy="45%" outerRadius={80} isAnimationActive={false} labelLine={false}>{reports.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[entry.name]} />))}</Pie><RechartsTooltip formatter={(v,n)=>[v,n]}/> <Legend verticalAlign="bottom" height={28} iconSize={10} wrapperStyle={{fontSize:'11px'}}/></PieChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin reportes</div>}</div>
+                       </div>
+                    </div>
+                    
+                    {/* RANKING */}
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-avoid-break print-no-shadow"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.TrendingUp size={18} className="text-slate-500"/> Ranking General</h3><span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">Promedio: {kpi.scoreProj.toFixed(2)}</span></div><div style={{ height: dynamicHeightRank }}>{processed && processed.length > 0 ? <ResponsiveContainer><BarChart data={processed} layout="vertical" margin={{left:0,right:20}}><XAxis type="number" domain={[0,10]} hide/> <YAxis type="category" dataKey="nombre" width={90} tick={{fontSize:10}} interval={0}/> <ReferenceLine x={kpi.scoreProj} stroke="red" strokeDasharray="3 3" /> <Bar dataKey="final" barSize={12} radius={[0,4,4,0]} fill="#64748B" isAnimationActive={false}><LabelList dataKey={d=>d.final.toFixed(1)} position="right" fontSize={10}/></Bar></BarChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos</div>}</div></div>
+                    
+                    {/* PERSONAL Y PARTICIPACIÓN EN EVALUACIÓN */}
+                    {filtersEval.proj !== 'Todos' && evalProjectTechStats.length > 0 && (
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-avoid-break print-no-shadow">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-bold text-slate-700 flex gap-2">
+                            <Icons.User size={18} className="text-indigo-500"/>
+                            Personal y Participación de Obra (Bitácora)
+                          </h3>
+                          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                            {evalProjectTechStats.length} Técnicos
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="px-4 py-2">Nombre Técnico</th>
+                                <th className="px-4 py-2">Rol Predominante</th>
+                                <th className="px-4 py-2 text-center">Asistencias</th>
+                                <th className="px-4 py-2 text-right">Participación</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {evalProjectTechStats.map((t, i) => {
+                                const isLider = t.rol.toUpperCase().includes('LIDER') || t.rol.toUpperCase().includes('LÍDER');
+                                return (
+                                  <tr key={i} className="hover:bg-slate-50/50">
+                                    <td className="px-4 py-3 font-bold text-slate-700">{t.nombre}</td>
+                                    <td className="px-4 py-3">
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                                        isLider ? 'bg-indigo-50 text-indigo-700 border border-indigo-150' : 'bg-slate-100 text-slate-650'
+                                      }`}>
+                                        {t.rol}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center font-mono font-bold text-slate-600">{t.asistencias} días</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <span className="font-mono font-bold text-slate-700">{t.porcentaje.toFixed(1)}%</span>
+                                        <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                          <div className="bg-indigo-600 h-full" style={{ width: `${t.porcentaje}%` }}/>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* BITACORA: REGISTROS FÍSICOS DE ASISTENCIA */}
+                    {filtersEval.proj !== 'Todos' && evalProjectRawLogs.length > 0 && (
+                      <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-avoid-break print-no-shadow">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-bold text-slate-700 flex gap-2">
+                            <Icons.Database size={18} className="text-teal-500"/>
+                            Registros Físicos de Asistencia (Bitácora de Campo)
+                          </h3>
+                          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                            {evalProjectRawLogs.length} Registros
+                          </span>
+                        </div>
+                        <div className="overflow-auto max-h-[350px] custom-scrollbar border border-slate-100 rounded-xl">
+                          <table className="w-full text-xs text-left text-slate-650 min-w-[950px] relative border-collapse">
+                            <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.05)]">
+                              <tr>
+                                <th className="px-3 py-2 pl-4">SAP</th>
+                                <th className="px-3 py-2">Fecha</th>
+                                <th className="px-3 py-2">Proyecto</th>
+                                <th className="px-3 py-2">Nombre</th>
+                                <th className="px-3 py-2">Rol</th>
+                                <th className="px-2 py-2 text-center">De</th>
+                                <th className="px-2 py-2 text-center">A</th>
+                                <th className="px-2 py-2 text-center">Cálculo Horas</th>
+                                <th className="px-3 py-2 text-center">Unidad</th>
+                                <th className="px-3 py-2 text-center">Reporte Env.</th>
+                                <th className="px-3 py-2 pl-2">Asunto</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {evalProjectRawLogs.map((log, i) => {
+                                const isLider = log.rol && (log.rol.toUpperCase().includes('LIDER') || log.rol.toUpperCase().includes('LÍDER'));
+                                const reportSent = log.reporteEnv ? String(log.reporteEnv).toUpperCase().trim() : '';
+                                const isReportOk = reportSent === 'SI';
+                                const isReportFt = reportSent === 'FT';
+                                const isReportFf = reportSent === 'FF';
+                                
+                                const liderClass = isLider ? 'bg-indigo-50 text-indigo-700 border border-indigo-150' : 'bg-slate-100 text-slate-650';
+                                
+                                let reportClass = 'bg-rose-50 text-rose-700 border border-rose-100';
+                                if (isReportOk) {
+                                  reportClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+                                } else if (isReportFt || isReportFf) {
+                                  reportClass = 'bg-amber-50 text-amber-700 border border-amber-100';
+                                }
+                                
+                                return (
+                                  <tr key={i} className="hover:bg-slate-50/50">
+                                    <td className="px-3 py-2.5 pl-4 font-mono font-bold text-slate-500">{log.sap || '-'}</td>
+                                    <td className="px-3 py-2.5 font-bold text-slate-700 whitespace-nowrap">{log.fecha}</td>
+                                    <td className="px-3 py-2.5 max-w-[180px] truncate" title={log.proyecto}>{log.proyecto}</td>
+                                    <td className="px-3 py-2.5 font-bold text-slate-600">{log.nombre}</td>
+                                    <td className="px-3 py-2.5">
+                                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${liderClass}`}>
+                                        {log.rol || 'Apoyo'}
+                                      </span>
+                                    </td>
+                                    <td className="px-2 py-2.5 text-center font-mono text-slate-500">{log.de || '-'}</td>
+                                    <td className="px-2 py-2.5 text-center font-mono text-slate-500">{log.a || '-'}</td>
+                                    <td className="px-2 py-2.5 text-center font-mono font-bold text-slate-600">{log.calculoHoras || '0'}</td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-teal-650 bg-teal-50/20">{log.unidad || '-'}</td>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold border ${reportClass}`}>
+                                        {log.reporteEnv || 'NO'}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 max-w-[150px] truncate pl-2" title={log.asunto}>{log.asunto || '-'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* DETALLES */}
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-8 print-page-break print-no-shadow"><div className="p-6 border-b border-slate-100 bg-slate-50/50 print-bg-transparent"><h2 className="font-bold text-lg text-slate-800">Detalle Técnico</h2></div><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold"><tr><th className="px-4 py-3 pl-6">Nombre</th><th className="px-2 py-3 text-center">Salida</th><th className="px-2 py-3 text-center">Entrada</th><th className="px-2 py-3 text-center">Reporte</th><th className="px-2 py-3 text-center">Parada</th><th className="px-2 py-3 text-center text-red-400">Reg</th><th className="px-2 py-3 text-center text-red-400">Ret</th><th className="px-2 py-3 text-center text-red-400">Fal</th><th className="px-4 py-3 text-center bg-indigo-50 text-indigo-700">Final</th></tr></thead><tbody className="divide-y divide-slate-100">{processed && processed.map(t=>(<tr key={t.nombre} className="hover:bg-slate-50 transition"><td className="px-4 py-3 pl-6 font-medium">{t.nombre}</td><td className="px-2 py-3 text-center">{t.sSal.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sEnt.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sRep.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sPar}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.reg||'-'}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.ret||'-'}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.fal||'-'}</td><td className="px-4 py-3 text-center font-bold text-lg text-indigo-700 bg-indigo-50/30">{t.final.toFixed(2)}</td></tr>))}</tbody></table></div></div>
+                    
+                    {/* TABLA TIEMPOS */}
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden print-avoid-break print-no-shadow"><div className="p-5 border-b border-slate-100 print-bg-transparent"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.MapPin size={18} className="text-teal-500"/> Tiempos Sitio</h3></div><table className="w-full text-sm text-left text-slate-600"><thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold"><tr><th className="px-6 py-3 pl-6">Técnico</th><th className="px-6 py-3 text-center">Llegada Prom.<br/><span className="text-[10px] font-normal text-teal-600 bg-teal-50 px-2 rounded">Prom: {siteStats.lleg}</span></th><th className="px-6 py-3 text-center">Salida Prom.<br/><span className="text-[10px] font-normal text-teal-600 bg-teal-50 px-2 rounded">Prom: {siteStats.sal}</span></th><th className="px-6 py-3 text-center bg-teal-50 text-teal-700">Tiempo Sitio<br/><span className="text-[10px] font-bold">Prom: {siteStats.sitio}</span></th></tr></thead><tbody className="divide-y divide-slate-100">{processed && processed.map(t=>(<tr key={t.nombre}><td className="px-6 py-3 pl-6 font-medium">{t.nombre}</td><td className="px-6 py-3 text-center font-mono">{t.tLleg}</td><td className="px-6 py-3 text-center font-mono">{t.tSal}</td><td className="px-6 py-3 text-center font-mono font-bold text-teal-600 bg-teal-50/30">{t.tSitio} hr</td></tr>))}</tbody></table></div>
+                  </React.Fragment>
+                )}
+              </div>
+            )}
+
+            {/* VISTA REPORTES */}
+            {activeTab === 'reportes' && (
+              <div className="fade-in">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 mb-6 print-hidden">
+                  <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Seleccionar Proyecto</label>
+                  <div className="flex gap-4">
+                    <SearchableSelect options={uniqueProjectsRepo} value={selectedRepoProj} onChange={val => setSelectedRepoProj(val)} placeholder="Buscar Proyecto..." />
+                    <button onClick={() => { 
+                      if(!selectedRepoProj) return showToast("Selecciona un proyecto", "error");
+                      setIsProcessing(true);
+                      
+                      let sapId = '';
+                      let projName = selectedRepoProj;
+                      const match = selectedRepoProj.match(/^\[(.*?)\]\s*(.*)$/);
+                      if (match) {
+                        sapId = match[1];
+                        projName = match[2];
+                      } else {
+                        // Buscar el registro Maestro por nombre de proyecto para recuperar el ID SAP
+                        const found = dataMaestro.find(m => String(m.proyecto).toUpperCase().trim() === String(projName).toUpperCase().trim());
+                        if (found && found.sap) {
+                          sapId = String(found.sap);
+                        }
+                      }
+                      
+                      setSelectedRepoProjSap(sapId);
+                      setResolvedRepoProjName(projName);
+                      
+                      if (sapId && window.google && window.google.script) {
+                        setLoadingCompend(true);
+                        window.google.script.run
+                          .withSuccessHandler(res => {
+                            try {
+                              const parsed = JSON.parse(res);
+                              setDataPendientes(parsed.pendientes || []);
+                              setDataComentarios(parsed.comentarios || []);
+                            } catch (e) {
+                              showToast("⚠️ Error al parsear comentarios y pendientes", "error");
+                            }
+                            setLoadingCompend(false);
+                          })
+                          .withFailureHandler(err => {
+                            showToast("⚠️ Error al obtener comentarios y pendientes: " + (err.message || err), "error");
+                            setLoadingCompend(false);
+                          })
+                          .getPendientesYComentarios(sapId);
+                      } else {
+                        setDataPendientes([]);
+                        setDataComentarios([]);
+                      }
+                      
+                      setTimeout(() => { 
+                        setHasGeneratedRepo(true); 
+                        setIsProcessing(false); 
+                      }, 500);
+                    }} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 rounded-xl shadow-lg transition flex items-center gap-2">
+                      {isProcessing || loadingCompend ? <Icons.Loader2 className="animate-spin"/> : <Icons.Search/>} GENERAR
+                    </button>
+                  </div>
+                </div>
+
+                {loadingRepo ? <div className="text-center py-20 text-slate-400 animate-pulse">Cargando Reportes...</div> : 
+                 !hasGeneratedRepo ? (
+                   <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 border-dashed print-hidden">
+                     <div className="inline-block p-4 bg-emerald-50 rounded-full mb-4"><Icons.ClipboardList size={32} className="text-emerald-500"/></div>
+                     <h3 className="text-xl font-bold text-slate-700">Historial de Reportes</h3>
+                     <p className="text-slate-400 mt-2">{dataRepo.length} reportes disponibles en el sistema.</p>
+                   </div>
+                 ) : (
+                   <div className="space-y-6">
+                     <div className="flex justify-between items-center print-hidden">
+                       <h2 className="text-xl font-bold text-slate-800">Historial: {selectedRepoProj}</h2>
+                       <div className="flex gap-2">
+                         <button onClick={() => { setSelectedRepoProj(''); setHasGeneratedRepo(false); }} className="text-sm text-slate-400 hover:text-slate-600 flex items-center gap-1 border px-3 py-1 rounded-lg bg-white"><Icons.XCircle size={14}/> Limpiar</button>
+                         <button onClick={() => setShowSummary(true)} className="text-sm bg-emerald-50 text-emerald-700 font-bold px-3 py-1 rounded-lg flex items-center gap-1 hover:bg-emerald-100 transition"><Icons.FileText size={14}/> Ver Resumen</button>
+                       </div>
+                     </div>
+                     <div className="hidden print-block mb-4 text-center">
+                       <h1 className="text-2xl font-bold">Bitácora de Obra: {selectedRepoProj}</h1>
+                      </div>
+                      
+                      {/* PANEL DE KPIs MAESTRO (INDICADORES DE OBRA GLOBAL) */}
+                      {selectedMaestroRecord && (
+                        <div className="space-y-4 mb-6">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                                <Icons.Calendar size={20}/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Fecha Inicio</span>
+                                <span className="text-xs font-extrabold text-slate-700 block truncate">{selectedMaestroRecord.fechaInicio || 'N/A'}</span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                                <Icons.Tag size={20}/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Categoría</span>
+                                <span className="text-xs font-extrabold text-slate-700 block truncate" title={selectedMaestroRecord.catProyecto}>{selectedMaestroRecord.catProyecto || 'N/A'}</span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-teal-50 text-teal-600 rounded-xl">
+                                <Icons.User size={20}/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Vendedor</span>
+                                <span className="text-[11px] font-extrabold text-slate-700 block leading-tight break-words animate-fade-in" title={selectedMaestroRecord.vendedor}>
+                                  {selectedMaestroRecord.vendedor || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-violet-50 text-violet-600 rounded-xl">
+                                <Icons.Award size={20}/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Encargado Obra</span>
+                                <span className="text-[11px] font-extrabold text-slate-700 block leading-tight break-words" title={selectedMaestroRecord.encargado}>
+                                  {selectedMaestroRecord.encargado || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                                <Icons.Cpu size={20}/>
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Unidades Est/Tot</span>
+                                <span className="text-xs font-extrabold text-slate-700 block">{selectedMaestroRecord.unidadesEstimadas || '0'} / {selectedMaestroRecord.unidadesTotales || '0'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* PANEL DE CONTROL DE PLAZOS Y TIEMPOS */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                                <Icons.Clock size={20}/>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Días Estimados (Contrato)</span>
+                                <span className="text-xs font-extrabold text-slate-750 block">{selectedMaestroRecord.diasEstimados || '0'} días hábiles</span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                                <Icons.Calendar size={20}/>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Días Reales en Obra</span>
+                                <span className="text-xs font-extrabold text-slate-750 block">{ganttTimeline.diasRealesObra} días en sitio</span>
+                              </div>
+                            </div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                              <div className="p-3 bg-violet-50 text-violet-600 rounded-xl">
+                                <Icons.CheckSquare size={20}/>
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Días con Reporte</span>
+                                <span className="text-xs font-extrabold text-slate-750 block">{ganttTimeline.diasConReporte} días reportados</span>
+                              </div>
+                            </div>
+                            <div className={`p-4 rounded-2xl border shadow-sm flex items-center gap-3 transition-all duration-300 ${
+                              ganttTimeline.reportesFaltantes > 0 
+                                ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                                : 'bg-emerald-50/50 border-emerald-100 text-emerald-700'
+                            }`}>
+                              <div className={`p-3 rounded-xl ${
+                                ganttTimeline.reportesFaltantes > 0 ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-emerald-100 text-emerald-650'
+                              }`}>
+                                <Icons.AlertTriangle size={20}/>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">Reportes Faltantes</span>
+                                <span className="text-sm font-extrabold block">
+                                  {ganttTimeline.reportesFaltantes > 0 ? `${ganttTimeline.reportesFaltantes} reportes` : 'Al corriente'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* PANEL DE KPIs EJECUTIVO */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                            <Icons.LayoutDashboard size={20}/>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Estatus Proyecto</span>
+                            <span className={`text-sm font-bold block ${
+                              (repoKpis.estatus||'').includes('Terminado') || (repoKpis.estatus||'').toUpperCase().includes('CONCLUIDO') ? 'text-green-600' : 
+                              (repoKpis.estatus||'').includes('Proceso') || (repoKpis.estatus||'').toUpperCase().includes('PROCESO') ? 'text-blue-600' : 'text-yellow-600'
+                            }`}>{repoKpis.estatus}</span>
+                          </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                          <div className="p-3 bg-orange-50 text-orange-600 rounded-xl">
+                            <Icons.AlertTriangle size={20}/>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Horas Extra Totales</span>
+                            <span className="text-sm font-extrabold text-slate-700 block">{repoKpis.totalHorasExtra} hrs</span>
+                          </div>
+                        </div>
+                        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+                          <div className={`p-3 rounded-xl ${repoKpis.incidenciasCount > 0 ? 'bg-red-50 text-red-600 animate-pulse' : 'bg-slate-50 text-slate-400'}`}>
+                            <Icons.XCircle size={20}/>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Incidencias</span>
+                            <span className={`text-sm font-extrabold block ${repoKpis.incidenciasCount > 0 ? 'text-red-600' : 'text-slate-700'}`}>
+                              {repoKpis.incidenciasCount} detectadas
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* DIAGRAMA DE GANTT */}
+                      {ganttTimeline.tasks.length > 0 ? (
+                        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm print-avoid-break print-no-shadow mb-6">
+                          {/* Cabecera superior con botones de alternancia */}
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 pb-3 border-b border-slate-100 print-hidden">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-bold text-slate-700 flex gap-2 items-center text-sm">
+                                <Icons.Calendar size={16} className="text-indigo-500"/> Cronograma de Actividades (Gantt)
+                              </h3>
+                              {ganttTimeline.diasRetraso > 0 && (
+                                <span className="px-2 py-0.5 bg-rose-100 border border-rose-200 text-rose-700 text-[10px] font-extrabold rounded animate-pulse">
+                                  Retraso: {ganttTimeline.diasRetraso} días
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                              {/* Botones de Control de Vista */}
+                              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/50">
+                                <button 
+                                  onClick={() => setGanttMode('reducido')} 
+                                  className={`px-3 py-1 text-[10px] font-extrabold rounded-md transition ${ganttMode === 'reducido' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                  title="Vista Reducida: Omitir fines de semana y pausas"
+                                >
+                                  Vista Reducida
+                                </button>
+                                <button 
+                                  onClick={() => setGanttMode('ampliado')} 
+                                  className={`px-3 py-1 text-[10px] font-extrabold rounded-md transition ${ganttMode === 'ampliado' ? 'bg-white text-indigo-650 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                  title="Vista Ampliada: Calendario completo con barras recortadas"
+                                >
+                                  Vista Ampliada
+                                </button>
+                              </div>
+                              <span className="text-[10px] text-slate-500 bg-slate-100 px-2.5 py-1 rounded font-extrabold">
+                                Rango: {processedRepo[0]?.fecha} al {processedRepo[processedRepo.length - 1]?.fecha}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Versión de Cabecera para Imprimir */}
+                          <div className="hidden print-flex justify-between items-center mb-3">
+                            <h3 className="font-bold text-slate-700 text-sm">Cronograma de Actividades (Gantt) - Modo {ganttMode === 'reducido' ? 'Reducido' : 'Ampliado'}</h3>
+                            <span className="text-[9px] text-slate-500">Rango: {processedRepo[0]?.fecha} al {processedRepo[processedRepo.length - 1]?.fecha}</span>
+                          </div>
+
+                          <div className="overflow-x-auto custom-scrollbar border border-slate-100 rounded-xl">
+                            <div style={{ minWidth: `${192 + ganttTimeline.days.length * 35}px` }} className="select-none relative">
+                               {/* Cabecera del Gantt (Meses) */}
+                               <div className="flex border-b border-slate-200 bg-slate-100/60 py-1.5">
+                                 <div 
+                                   style={{ width: '192px', minWidth: '192px' }} 
+                                   className="sticky left-0 bg-slate-100 z-20 font-extrabold text-slate-500 text-[10px] uppercase tracking-wider pl-3 flex items-center border-r border-slate-150/70"
+                                 >
+                                   Mes
+                                 </div>
+                                 <div className="flex-1 flex">
+                                   {ganttTimeline.monthGroups && ganttTimeline.monthGroups.map((m, i) => (
+                                     <div 
+                                       key={i} 
+                                       style={{ width: `${m.count * 35}px`, minWidth: `${m.count * 35}px` }} 
+                                       className="flex items-center justify-center text-[10px] font-bold text-slate-600 border-r border-slate-200/50 uppercase tracking-wider truncate px-1"
+                                       title={m.name}
+                                     >
+                                       {m.name}
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>
+
+                               {/* Cabecera del Gantt (Días) */}
+                               <div className="flex border-b border-slate-200 bg-slate-50/50 py-2">
+                                 <div 
+                                   style={{ width: '192px', minWidth: '192px' }} 
+                                   className="sticky left-0 bg-slate-50 z-20 font-extrabold text-slate-400 text-[10px] uppercase tracking-wider pl-3 flex items-center border-r border-slate-150/70"
+                                 >
+                                   Actividad
+                                 </div>
+                                 <div className="flex-1 flex">
+                                   {ganttTimeline.days.map((d, i) => (
+                                     <div 
+                                       key={i} 
+                                       style={{ width: '35px', minWidth: '35px' }} 
+                                       className={`flex flex-col items-center justify-center text-[9px] font-mono border-r border-slate-100/50 ${d.isWeekend ? 'bg-slate-200/30 text-slate-400' : 'text-slate-600 font-bold'}`}
+                                       title={d.dateStr}
+                                     >
+                                       <span>{d.dayName}</span>
+                                       <span className="text-[10px] font-bold">{d.dayNum}</span>
+                                     </div>
+                                   ))}
+                                 </div>
+                               </div>
+                               
+                               {/* Lista de Actividades (Filas con barras recortadas celda por celda) */}
+                               <div className="divide-y divide-slate-100">
+                                 {ganttTimeline.tasks.map((task, idx) => {
+                                   return (
+                                     <div key={idx} className="flex h-10 items-center">
+                                       {/* Columna Sticky de Actividad */}
+                                       <div 
+                                         style={{ width: '192px', minWidth: '192px' }} 
+                                         className="sticky left-0 bg-white z-20 font-bold text-slate-600 text-xs truncate pl-3 pr-4 border-r border-slate-150/70 h-full flex items-center shadow-[4px_0_8px_-4px_rgba(0,0,0,0.05)]" 
+                                         title={task.name}
+                                       >
+                                         {task.name}
+                                       </div>
+                                       
+                                       {/* Contenedor del Timeline del task */}
+                                       <div className="relative flex-1 h-full bg-slate-50/30 flex items-center">
+                                         {/* Gridlines sombreados en el fondo */}
+                                         <div className="absolute inset-0 flex pointer-events-none">
+                                           {ganttTimeline.days.map((d, i) => (
+                                             <div 
+                                               key={i} 
+                                               style={{ width: '35px', minWidth: '35px' }} 
+                                               className={`border-r border-slate-100/70 h-full ${d.isWeekend ? 'bg-slate-200/20' : ''}`}
+                                             />
+                                           ))}
+                                         </div>
+                                         
+                                         {ganttMode === 'reducido' ? (
+                                           /* Barra del Gantt continua y absoluta para Vista Reducida */
+                                           <div 
+                                             className={`absolute bg-gradient-to-r ${task.isNoReportVirtual ? 'from-amber-400 to-amber-600 shadow-amber-100 border-amber-300 text-white' : (task.isDelayed ? 'from-red-500 to-rose-600 shadow-red-100 border-red-400 text-white' : 'from-indigo-500 to-violet-600 shadow-indigo-100 border-indigo-400 text-white')} h-5 rounded-md flex items-center justify-center shadow-sm select-none border border-white/20`}
+                                             style={{ 
+                                               left: `${task.left * 35}px`, 
+                                               width: `${task.duration * 35}px` 
+                                             }}
+                                             title={`${task.name}: ${task.start} al ${task.end} (${task.workingDays} días laborados)`}
+                                           >
+                                             {task.workingDays >= 1 && (
+                                               <span className="text-[8px] font-extrabold text-white opacity-90 drop-shadow-sm px-1 truncate font-sans">
+                                                 {task.workingDays}d
+                                               </span>
+                                             )}
+                                           </div>
+                                         ) : (
+                                           /* Barra del Gantt recortada y segmentada celda por celda para Vista Ampliada */
+                                           <div className="absolute inset-0 flex items-center pointer-events-none">
+                                             {ganttTimeline.days.map((d, i) => {
+                                               const isActive = task.activeDates.has(d.dateISO);
+                                               if (!isActive) return <div key={i} style={{ width: '35px', minWidth: '35px' }} className="h-full" />;
+                                               
+                                               const isPrevActive = i > 0 && task.activeDates.has(ganttTimeline.days[i-1].dateISO);
+                                               const isNextActive = i < ganttTimeline.days.length - 1 && task.activeDates.has(ganttTimeline.days[i+1].dateISO);
+                                               
+                                               let roundedClass = 'rounded-md';
+                                               if (isPrevActive && isNextActive) {
+                                                 roundedClass = 'rounded-none';
+                                               } else if (isPrevActive) {
+                                                 roundedClass = 'rounded-r-md rounded-l-none';
+                                               } else if (isNextActive) {
+                                                 roundedClass = 'rounded-l-md rounded-r-none';
+                                               }
+
+                                               const bgClass = task.isNoReportVirtual
+                                                 ? 'bg-gradient-to-r from-amber-400 to-amber-600 border-amber-300 text-white'
+                                                 : (task.isDelayed 
+                                                     ? 'bg-gradient-to-r from-red-500 to-rose-600 border-red-400 text-white' 
+                                                     : 'bg-gradient-to-r from-indigo-500 to-violet-600 border-indigo-400 text-white');
+
+                                               const isFirstActive = d.dateISO === task.start;
+
+                                               return (
+                                                 <div 
+                                                   key={i} 
+                                                   style={{ width: '35px', minWidth: '35px' }} 
+                                                   className="h-full flex items-center justify-center relative pointer-events-auto"
+                                                 >
+                                                   <div 
+                                                     className={`absolute inset-y-2.5 left-0 right-0 ${bgClass} ${roundedClass} flex items-center justify-center shadow-sm select-none border-t border-b`}
+                                                     title={`${task.name}: ${d.dateISO} (${task.workingDays} días laborados)`}
+                                                   >
+                                                     {isFirstActive && (
+                                                       <span className="text-[8px] font-extrabold text-white opacity-90 drop-shadow-sm px-0.5 truncate pointer-events-none">
+                                                         {task.workingDays}d
+                                                       </span>
+                                                     )}
+                                                   </div>
+                                                 </div>
+                                               );
+                                             })}
+                                           </div>
+                                         )}
+                                       </div>
+                                     </div>
+                                   );
+                                 })}
+                               </div>
+
+                               {/* Línea de Deadline (Fecha Límite) */}
+                               {ganttTimeline.deadlineIdx !== -1 && (
+                                 <div 
+                                   className="absolute top-0 bottom-0 border-l-2 border-red-500 border-dashed z-20 pointer-events-none"
+                                   style={{ left: `${192 + ganttTimeline.deadlineIdx * 35}px` }}
+                                   title={`Fecha Límite de Entrega: ${ganttTimeline.deadlineDateStr}`}
+                                 >
+                                   <span className="bg-red-500 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded absolute top-2 -left-4 shadow-md whitespace-nowrap">
+                                     LÍMITE: {ganttTimeline.deadlineDateStr}
+                                   </span>
+                                 </div>
+                               )}
+                             </div>
+                          </div>
+                          <p className="text-[9px] text-slate-400 mt-2 italic text-right">
+                            {ganttMode === 'reducido' 
+                              ? 'Modo Reducido: Las columnas de fines de semana y pausas sin asistencia se han colapsado para ver la duración neta.' 
+                              : 'Modo Ampliado: Se muestra el calendario natural continuo. Las barras se presentan cortadas (interrumpidas) en los días sin trabajo.'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-6 text-center text-slate-500">
+                          <Icons.Calendar size={32} className="mx-auto mb-2 text-indigo-400 animate-pulse"/>
+                          <h4 className="font-bold text-slate-700 text-sm">Cronograma no disponible</h4>
+                          <p className="text-xs text-slate-400 max-w-md mx-auto mt-1 leading-relaxed">
+                            No se encontraron actividades válidas o las fechas del reporte no pudieron ser procesadas para el diagrama de Gantt.
+                          </p>
+                          {processedRepo.length > 0 && (
+                            <div className="mt-4 p-4 bg-slate-50 rounded-xl text-left text-xs font-mono text-slate-600 border border-slate-100 max-w-xl mx-auto overflow-x-auto">
+                              <div className="font-bold text-[10px] text-indigo-500 uppercase tracking-wider mb-2 border-b border-indigo-100 pb-1">📂 Panel de Diagnóstico de Gantt</div>
+                              <div className="grid grid-cols-2 gap-2 mb-2">
+                                <div>Total de reportes: <span className="font-bold">{processedRepo.length}</span></div>
+                                <div>Campos recibidos: <span className="font-bold text-slate-700">{JSON.stringify(Object.keys(processedRepo[0]))}</span></div>
+                              </div>
+                              <div className="mt-2 text-[10px] leading-relaxed bg-white p-2 rounded border border-slate-150">
+                                <strong>Muestra del primer reporte:</strong>
+                                <pre className="mt-1 whitespace-pre-wrap text-slate-500 text-[9px]">{JSON.stringify(processedRepo[0], null, 2)}</pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* PERSONAL Y PARTICIPACIÓN DE OBRA */}
+                      {selectedRepoProjSap && (
+                        <>
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mb-6">
+                          <h3 className="font-bold text-slate-700 flex gap-2 items-center text-sm mb-4">
+                            <Icons.User size={16} className="text-indigo-500"/> Personal y Participación de Obra (Bitácora de Campo)
+                          </h3>
+                          {projectTechStats.length === 0 ? (
+                            <div className="text-center py-6 text-slate-400 text-xs italic">No hay registros de personal en la Bitácora para este proyecto.</div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs text-left">
+                                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200">
+                                  <tr>
+                                    <th className="px-4 py-2">Nombre Técnico</th>
+                                    <th className="px-4 py-2">Rol Predominante</th>
+                                    <th className="px-4 py-2 text-center">Asistencias</th>
+                                    <th className="px-4 py-2 text-right">Participación</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {projectTechStats.map((t, i) => {
+                                    const isLider = t.rol.toUpperCase().includes('LIDER') || t.rol.toUpperCase().includes('LÍDER');
+                                    return (
+                                      <tr key={i} className="hover:bg-slate-50/50">
+                                        <td className="px-4 py-3 font-bold text-slate-700">{t.nombre}</td>
+                                        <td className="px-4 py-3">
+                                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                                            isLider ? 'bg-indigo-50 text-indigo-700 border border-indigo-150' : 'bg-slate-100 text-slate-650'
+                                          }`}>
+                                            {t.rol}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-mono font-bold text-slate-600">{t.asistencias} días</td>
+                                        <td className="px-4 py-3 text-right">
+                                          <div className="flex items-center justify-end gap-2">
+                                            <span className="font-mono font-bold text-slate-700">{t.porcentaje.toFixed(1)}%</span>
+                                            <div className="w-16 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                              <div className="bg-indigo-600 h-full" style={{ width: `${t.porcentaje}%` }}/>
+                                            </div>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* BITACORA: REGISTROS FÍSICOS DE ASISTENCIA */}
+                        {repoProjectRawLogs.length > 0 && (
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm mb-6 print-avoid-break print-no-shadow">
+                            <div className="flex justify-between items-center mb-4">
+                              <h3 className="font-bold text-slate-700 flex gap-2 text-sm">
+                                <Icons.Database size={18} className="text-teal-500"/>
+                                Registros Físicos de Asistencia (Bitácora de Campo)
+                              </h3>
+                              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                                {repoProjectRawLogs.length} Registros
+                              </span>
+                            </div>
+                            <div className="overflow-auto max-h-[350px] custom-scrollbar border border-slate-100 rounded-xl">
+                              <table className="w-full text-xs text-left text-slate-650 min-w-[950px] relative border-collapse">
+                                <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-200 sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.05)]">
+                                  <tr>
+                                    <th className="px-3 py-2 pl-4">SAP</th>
+                                    <th className="px-3 py-2">Fecha</th>
+                                    <th className="px-3 py-2">Proyecto</th>
+                                    <th className="px-3 py-2">Nombre</th>
+                                    <th className="px-3 py-2">Rol</th>
+                                    <th className="px-2 py-2 text-center">De</th>
+                                    <th className="px-2 py-2 text-center">A</th>
+                                    <th className="px-2 py-2 text-center">Cálculo Horas</th>
+                                    <th className="px-3 py-2 text-center">Unidad</th>
+                                    <th className="px-3 py-2 text-center">Reporte Env.</th>
+                                    <th className="px-3 py-2 pl-2">Asunto</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {repoProjectRawLogs.map((log, i) => {
+                                    const isLider = log.rol && (log.rol.toUpperCase().includes('LIDER') || log.rol.toUpperCase().includes('LÍDER'));
+                                    const reportSent = log.reporteEnv ? String(log.reporteEnv).toUpperCase().trim() : '';
+                                    const isReportOk = reportSent === 'SI';
+                                    const isReportFt = reportSent === 'FT';
+                                    const isReportFf = reportSent === 'FF';
+                                    
+                                    const liderClass = isLider ? 'bg-indigo-50 text-indigo-700 border border-indigo-150' : 'bg-slate-100 text-slate-650';
+                                    
+                                    let reportClass = 'bg-rose-50 text-rose-700 border border-rose-100';
+                                    if (isReportOk) {
+                                      reportClass = 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+                                    } else if (isReportFt || isReportFf) {
+                                      reportClass = 'bg-amber-50 text-amber-700 border border-amber-100';
+                                    }
+                                    
+                                    return (
+                                      <tr key={i} className="hover:bg-slate-50/50">
+                                        <td className="px-3 py-2.5 pl-4 font-mono font-bold text-slate-500">{log.sap || '-'}</td>
+                                        <td className="px-3 py-2.5 font-bold text-slate-700 whitespace-nowrap">{log.fecha}</td>
+                                        <td className="px-3 py-2.5 max-w-[180px] truncate" title={log.proyecto}>{log.proyecto}</td>
+                                        <td className="px-3 py-2.5 font-bold text-slate-600">{log.nombre}</td>
+                                        <td className="px-3 py-2.5">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold ${liderClass}`}>
+                                            {log.rol || 'Apoyo'}
+                                          </span>
+                                        </td>
+                                        <td className="px-2 py-2.5 text-center font-mono text-slate-500">{log.de || '-'}</td>
+                                        <td className="px-2 py-2.5 text-center font-mono text-slate-500">{log.a || '-'}</td>
+                                        <td className="px-2 py-2.5 text-center font-mono font-bold text-slate-600">{log.calculoHoras || '0'}</td>
+                                        <td className="px-3 py-2.5 text-center font-bold text-teal-650 bg-teal-50/20">{log.unidad || '-'}</td>
+                                        <td className="px-3 py-2.5 text-center">
+                                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold border ${reportClass}`}>
+                                            {log.reporteEnv || 'NO'}
+                                          </span>
+                                        </td>
+                                        <td className="px-3 py-2.5 max-w-[150px] truncate pl-2" title={log.asunto}>{log.asunto || '-'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                      {/* SECCIÓN DE COMENTARIOS Y PENDIENTES */}
+                      {selectedRepoProjSap && (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                          {/* COMENTARIOS */}
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="font-bold text-slate-700 flex gap-2 items-center text-sm mb-4">
+                              <Icons.MessageSquare size={16} className="text-blue-500"/> Comentarios y Alertas del Proyecto
+                            </h3>
+                            {loadingCompend ? (
+                              <div className="text-center py-10 text-slate-400 text-xs animate-pulse">Cargando comentarios...</div>
+                            ) : dataComentarios.length === 0 ? (
+                              <div className="text-center py-10 text-slate-400 text-xs italic">No hay comentarios registrados para este proyecto.</div>
+                            ) : (
+                              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {dataComentarios.map((c, i) => (
+                                  <div key={i} className={`p-4 rounded-xl border ${c.prevencionYN === 'SI' ? 'bg-red-50/50 border-red-200' : 'bg-slate-50 border-slate-100'}`}>
+                                    <div className="flex justify-between items-start mb-2">
+                                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm flex items-center gap-1">
+                                        <Icons.Calendar size={10}/> {c.fecha}
+                                      </span>
+                                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                        c.prevencionYN === 'SI' ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-blue-100 text-blue-700'
+                                      }`}>
+                                        {c.prevencionYN === 'SI' ? '⚠️ Alerta' : 'Comentario'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-700 mb-1">{c.categoriaNegativo || 'General'}</p>
+                                    <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{c.descripcion}</p>
+                                    {c.prevencionYN === 'SI' && c.prevencionDescripcion && (
+                                      <div className="mt-2 p-2.5 bg-white rounded-lg border border-red-150 text-[11px] text-red-700 font-medium">
+                                        <strong>Acción de Prevención:</strong> {c.prevencionDescripcion}
+                                      </div>
+                                    )}
+                                    <div className="mt-2 text-[9px] text-slate-400 font-medium text-right">— {c.responsable}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* PENDIENTES */}
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+                            <h3 className="font-bold text-slate-700 flex gap-2 items-center text-sm mb-4">
+                              <Icons.ListTodo size={16} className="text-emerald-500"/> Pendientes de Obra
+                            </h3>
+                            {loadingCompend ? (
+                              <div className="text-center py-10 text-slate-400 text-xs animate-pulse">Cargando pendientes...</div>
+                            ) : dataPendientes.length === 0 ? (
+                              <div className="text-center py-10 text-slate-400 text-xs italic">No hay pendientes registrados para este proyecto.</div>
+                            ) : (
+                              <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                {dataPendientes.map((p, i) => (
+                                  <div key={i} className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <div className="flex justify-between items-start mb-2 gap-2">
+                                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm flex items-center gap-1">
+                                        <Icons.Calendar size={10}/> {p.fechaReporte}
+                                      </span>
+                                      <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                        (p.status||'').toUpperCase().includes('COMPLETO') || (p.status||'').toUpperCase().includes('CERRADO') || (p.status||'').toUpperCase().includes('CONCLUIDO')
+                                          ? 'bg-green-100 text-green-700'
+                                          : 'bg-amber-100 text-amber-700'
+                                      }`}>
+                                        {p.status || 'Pendiente'}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs font-bold text-indigo-600 mb-1">{p.titulo || 'Sin título'}</p>
+                                    <p className="text-xs text-slate-600 leading-relaxed mb-2 whitespace-pre-wrap">{p.descripcion}</p>
+                                    
+                                    {p.razon && (
+                                      <p className="text-[10px] text-slate-500 bg-white p-2 rounded border border-slate-100 mb-2">
+                                        <strong>Razón:</strong> {p.razon}
+                                      </p>
+                                    )}
+                                    
+                                    <div className="flex justify-between items-center text-[9px] text-slate-400 font-medium">
+                                      <span>Cat: {p.categoria || 'N/A'}</span>
+                                      <span>Resp: <strong className="text-slate-500">{p.responsable}</strong> ({p.parteResponsable})</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                     {/* TIMELINE */}
+                     {processedRepo.length === 0 ? (
+                       <div className="p-10 text-center text-slate-400 bg-white rounded-xl border border-slate-100">No hay reportes para este proyecto.</div>
+                     ) : (
+                       <div className="relative border-l-2 border-slate-200 ml-4 space-y-8 pb-4 print-border-none print-ml-0">
+                         {processedRepo.slice().reverse().map((report, idx) => (
+                           <div key={idx} className="ml-6 relative print-ml-0 print-avoid-break mb-6">
+                             <div className="absolute -left-[31px] top-0 bg-white border-2 border-indigo-500 w-4 h-4 rounded-full print-hidden"></div>
+                             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition print-no-shadow">
+                               <div className="flex flex-col md:flex-row justify-between mb-4 border-b border-slate-50 pb-4 gap-4">
+                                 <div>
+                                   <div className="flex items-center gap-2 mb-1">
+                                     <span className="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-1 rounded flex items-center gap-1"><Icons.Calendar size={12}/> {report.fecha}</span>
+                                   </div>
+                                   <h3 className="font-bold text-indigo-600 text-sm flex items-center gap-1">📊 Avance Reportado</h3>
+                                   <p className="text-xs text-slate-500">Personal en obra: {report.equipo || 'No especificado'}</p>
+                                 </div>
+                                 <div className="text-right flex flex-col items-end gap-2">
+                                   <div className="flex gap-2 items-center">
+                                     {report.linkPublico && (
+                                       <a href={report.linkPublico} target="_blank" className="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold transition shadow-sm">
+                                         📄 PDF Oficial
+                                       </a>
+                                     )}
+                                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold ${
+                                       (report.estatus||'').includes('Terminado') || (report.estatus||'').toUpperCase().includes('CONCLUIDO') ? 'bg-green-100 text-green-700' : 
+                                       (report.estatus||'').includes('Proceso') || (report.estatus||'').toUpperCase().includes('PROCESO') ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                                     }`}>
+                                       {report.estatus}
+                                     </span>
+                                   </div>
+                                   {report.cantHorasExtra && report.cantHorasExtra !== '0' && (
+                                     <div className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded flex items-center justify-end gap-1">
+                                       <Icons.AlertTriangle size={12}/> {report.cantHorasExtra} Hrs Extra
+                                     </div>
+                                   )}
+                                 </div>
+                               </div>
+                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                 <div>
+                                   <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Icons.CheckSquare size={14}/> Actividades Realizadas</h4>
+                                   <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">{report.descripcion || 'Sin registro'}</p>
+                                 </div>
+                                 <div>
+                                   <h4 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1"><Icons.AlertTriangle size={14}/> Pendientes / Observaciones</h4>
+                                   <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                     {report.pendientes || 'Sin observaciones pendientes'}
+                                   </p>
+                                 </div>
+                                 <div>
+                                   <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-1"><Icons.Camera size={14}/> Evidencia Fotográfica</h4>
+                                   <ImageGallery reportId={report.idReporte} isColumnLayout={true} />
+                                 </div>
+                               </div>
+                             </div>
+                           </div>
+                         ))}
+                       </div>
+                     )}
+                   </div>
+                 )
+            }
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<ErrorBoundary><App /></ErrorBoundary>);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,5 @@
+**/*backup*
+**/*.bak
+**/*.tmp
+backups/**
+.git/**

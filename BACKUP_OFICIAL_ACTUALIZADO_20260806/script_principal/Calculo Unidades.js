@@ -86,7 +86,7 @@ function calcularUnidades() {
     
     // Check eligibility
     let isEligible = false;
-    if (fechaAlta instanceof Date && fechaAlta >= cutoffDate && areaAsignada.includes("Proyectos")) {
+    if (fechaAlta instanceof Date && fechaAlta >= cutoffDate && areaAsignada.includes("Instalaciones")) {
       isEligible = true;
     }
     

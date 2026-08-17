@@ -26,7 +26,7 @@ function calcularDiasParaEntrar() {
     const fechaAcceso = row[accesoCol - 1];
     const fechaInicio = row[inicioCol - 1];
 
-    if (typeof area === "string" && area.includes("Proyectos") && categoria === "Instalación") {
+    if (typeof area === "string" && area.includes("Instalaciones") && categoria === "Instalación") {
       if (!(fechaAcceso instanceof Date) || !(fechaInicio instanceof Date)) {
         return ["NA"];
       }
