@@ -43,11 +43,30 @@ var AUDIT_COL_REP_NOMBRE_PROYECTO  = 3;   // "NombreProyecto"
 var AUDIT_COL_REP_FECHA_REFERENCIA = 4;   // "Fecha_Referencia"
 var AUDIT_COL_REP_EQUIPO_MANUAL    = 36;  // "Equipo_Trabajo_Manual"
 
+function auditObtenerMapaIndicesReportes(headers) {
+  var map = {
+    FECHA_REPORTE: 1,
+    NOMBRE_PROYECTO: 3,
+    FECHA_REFERENCIA: 4,
+    EQUIPO_MANUAL: 36
+  };
+  if (!headers || !headers.length) return map;
+  
+  for (var c = 0; c < headers.length; c++) {
+    var hNorm = auditReporteNormalizar(headers[c]);
+    if (hNorm.indexOf('fecha_reporte') !== -1 || hNorm.indexOf('fecha reporte') !== -1) map.FECHA_REPORTE = c;
+    else if (hNorm.indexOf('nombreproyecto') !== -1 || hNorm.indexOf('nombre_proyecto') !== -1 || hNorm.indexOf('nombre proyecto') !== -1) map.NOMBRE_PROYECTO = c;
+    else if (hNorm.indexOf('fecha_referencia') !== -1 || hNorm.indexOf('fecha referencia') !== -1) map.FECHA_REFERENCIA = c;
+    else if (hNorm.indexOf('equipo_trabajo_manual') !== -1 || hNorm.indexOf('equipo trabajo manual') !== -1 || hNorm.indexOf('equipo_manual') !== -1) map.EQUIPO_MANUAL = c;
+  }
+  return map;
+}
+
 // Valor de ASUNTO que activa la auditoría de reporte
 var AUDIT_ASUNTO_INSTALACION = 'proyecto instalación';
 
 // Versión del módulo de auditorías
-var AUDIT_VERSION = '6.0.0 (Build 03/08/2026 17:58)';
+var AUDIT_VERSION = '6.1.0 (Build 17/08/2026)';
 
 
 // ═════════════════════════════════════════════════════════════
@@ -195,16 +214,22 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
   var mapaReportes = {};
   var filasCoincidentes = 0;
 
+  var mRep = auditObtenerMapaIndicesReportes(datosReportes[0]);
+  var repFechaRefCol = (mRep.FECHA_REFERENCIA !== undefined) ? mRep.FECHA_REFERENCIA : 4;
+  var repNomProjCol  = (mRep.NOMBRE_PROYECTO !== undefined) ? mRep.NOMBRE_PROYECTO : 3;
+  var repFechaRepCol = (mRep.FECHA_REPORTE !== undefined) ? mRep.FECHA_REPORTE : 1;
+  var repEquipoCol   = (mRep.EQUIPO_MANUAL !== undefined) ? mRep.EQUIPO_MANUAL : 36;
+
   for (var r = 1; r < datosReportes.length; r++) {
     var filaRep       = datosReportes[r];
-    var fechaRefStr   = auditReporteFormatDate(filaRep[AUDIT_COL_REP_FECHA_REFERENCIA]);
+    var fechaRefStr   = auditReporteFormatDate(filaRep[repFechaRefCol]);
 
     if (!setFechas[fechaRefStr]) continue;
     filasCoincidentes++;
 
-    var nombreProyecto  = String(filaRep[AUDIT_COL_REP_NOMBRE_PROYECTO] || '');
-    var fechaRepStr     = auditReporteFormatDate(filaRep[AUDIT_COL_REP_FECHA_REPORTE]);
-    var equipoRaw       = String(filaRep[AUDIT_COL_REP_EQUIPO_MANUAL] || '');
+    var nombreProyecto  = String(filaRep[repNomProjCol] || '');
+    var fechaRepStr     = auditReporteFormatDate(filaRep[repFechaRepCol]);
+    var equipoRaw       = String(filaRep[repEquipoCol] || '');
     var proyectoNorm    = auditReporteNormalizar(nombreProyecto);
 
     var personas = equipoRaw.split(/[,;\/\n]|\by\b/i);
@@ -294,10 +319,10 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
   if (contTotal > 0 && huboCambios) {
     var valuesToWrite = [];
     for (var b = 1; b < datosBitacora.length; b++) {
-      valuesToWrite.push([datosBitacora[b][AUDIT_COL_BIT_REPORTE_ENV]]);
+      valuesToWrite.push([datosBitacora[b][repEnvCol]]);
     }
-    shBitacora.getRange(2, AUDIT_COL_BIT_REPORTE_ENV + 1, valuesToWrite.length, 1).setValues(valuesToWrite);
-    Logger.log('Auditoría guardada en lote.');
+    shBitacora.getRange(2, repEnvCol + 1, valuesToWrite.length, 1).setValues(valuesToWrite);
+    Logger.log('Auditoría guardada en lote en columna ' + (repEnvCol + 1));
   } else {
     Logger.log('Sin cambios que escribir en la hoja.');
   }
