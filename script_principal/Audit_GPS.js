@@ -260,10 +260,10 @@ function auditProcesarInsercionFilasAdministrativasAgrupadas(sheet, uniqueTechs,
     var hasSmarthaus = techRows.some(function(r) { return auditNormalizar(r.proyecto) === 'smarthaus gastos'; });
     if (hasSmarthaus) continue;
     
-    var installRows = techRows.filter(function(r) { return !auditEsProyectoInterno(r.proyecto); });
+    var installRows = techRows.filter(function(r) { return !auditEsProyectoInterno(r.proyecto, r.asunto); });
     if (installRows.length === 0) continue;
     
-    var isOnlySpecial = (installRows.length === 1 && (especiales[auditNormalizar(installRows[0].proyecto)] || auditEsProyectoInterno(installRows[0].proyecto)));
+    var isOnlySpecial = (installRows.length === 1 && (especiales[auditNormalizar(installRows[0].proyecto)] || auditEsProyectoInterno(installRows[0].proyecto, installRows[0].asunto)));
     if (isOnlySpecial) continue;
     
     for (var i = 0; i < installRows.length; i++) {
@@ -366,7 +366,7 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
   }
   
   var installRows = gpsRows.filter(function(r) {
-    return !auditEsProyectoInterno(r.proyecto);
+    return !auditEsProyectoInterno(r.proyecto, r.asunto);
   });
   
   for (var k = 0; k < installRows.length; k++) {
@@ -384,49 +384,78 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     
     var boundaryDec = null;
     
-    // a) Verificar salida de geocerca de Proyecto Anterior
-    var prevExitTime = auditCalcularUltimaSalidaProyecto(allUnitRoutes, pNormPrev, geocercas);
+    // Si cambiaron de camioneta física en el día:
+    var diffUnits = (rowPrev.unidad && rowCurr.unidad && auditNormalizar(rowPrev.unidad) !== auditNormalizar(rowCurr.unidad));
     
-    // b) Verificar si pasaron por oficina matriz tras salir del proyecto
-    var officeVisitDec = null;
-    if (prevExitTime) {
-      for (var r = 0; r < allUnitRoutes.length; r++) {
+    if (diffUnits) {
+      var prevOfficeDec = null;
+      for (var r = allUnitRoutes.length - 1; r >= 0; r--) {
         var rt = allUnitRoutes[r];
-        if (auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
-          var distEndOffice = auditHaversineDistance(rt.end_lat, rt.end_lon, officeLat, officeLon);
-          if (distEndOffice <= 250.0) {
-            var offDate = auditToDateObj(rt.end_time);
-            if (offDate) {
-              officeVisitDec = offDate.getHours() + offDate.getMinutes() / 60.0;
-              break;
+        var distEndOffice = auditHaversineDistance(rt.end_lat, rt.end_lon, officeLat, officeLon);
+        if (distEndOffice <= 350.0) {
+          var offDate = auditToDateObj(rt.end_time);
+          if (offDate) {
+            prevOfficeDec = offDate.getHours() + offDate.getMinutes() / 60.0;
+            break;
+          }
+        }
+      }
+      var currRoutes = rowCurr.routes || [];
+      var currFirstStart = auditObtenerPrimerInicio(currRoutes);
+      var currStartDec = currFirstStart ? (currFirstStart.getHours() + currFirstStart.getMinutes() / 60.0) : null;
+      
+      if (prevOfficeDec !== null && currStartDec !== null && prevOfficeDec <= currStartDec) {
+        boundaryDec = Math.ceil(prevOfficeDec * 4) / 4.0;
+      } else if (currStartDec !== null && currStartDec > 12.0) {
+        boundaryDec = Math.floor(currStartDec * 4) / 4.0;
+      } else {
+        boundaryDec = 13.0; // Corte estándar mediodía
+      }
+    } else {
+      // a) Verificar salida de geocerca de Proyecto Anterior
+      var prevExitTime = auditCalcularUltimaSalidaProyecto(allUnitRoutes, pNormPrev, geocercas);
+      
+      // b) Verificar si pasaron por oficina matriz tras salir del proyecto
+      var officeVisitDec = null;
+      if (prevExitTime) {
+        for (var r = 0; r < allUnitRoutes.length; r++) {
+          var rt = allUnitRoutes[r];
+          if (auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
+            var distEndOffice = auditHaversineDistance(rt.end_lat, rt.end_lon, officeLat, officeLon);
+            if (distEndOffice <= 250.0) {
+              var offDate = auditToDateObj(rt.end_time);
+              if (offDate) {
+                officeVisitDec = offDate.getHours() + offDate.getMinutes() / 60.0;
+                break;
+              }
             }
           }
         }
       }
-    }
-    
-    if (officeVisitDec !== null) {
-      boundaryDec = Math.ceil(officeVisitDec * 4) / 4.0;
-    } else if (prevExitTime) {
-      var prevExitDate = auditToDateObj(prevExitTime);
-      var prevExitDec = prevExitDate.getHours() + prevExitDate.getMinutes() / 60.0;
-      boundaryDec = Math.ceil(prevExitDec * 4) / 4.0;
-    } else {
-      // Especiales o sin geocerca: buscar traslado principal inter-sitios (> 5 km)
-      var maxTransitTime = null;
-      var maxDist = 0;
-      for (var r = 0; r < allUnitRoutes.length; r++) {
-        var dKm = parseFloat(allUnitRoutes[r].distance_km || allUnitRoutes[r].dist_km || 0);
-        if (dKm > 5.0 && dKm > maxDist) {
-          maxDist = dKm;
-          maxTransitTime = auditToDateObj(allUnitRoutes[r].start_time);
-        }
-      }
-      if (maxTransitTime) {
-        var transitDec = maxTransitTime.getHours() + maxTransitTime.getMinutes() / 60.0;
-        boundaryDec = Math.ceil(transitDec * 4) / 4.0;
+      
+      if (officeVisitDec !== null) {
+        boundaryDec = Math.ceil(officeVisitDec * 4) / 4.0;
+      } else if (prevExitTime) {
+        var prevExitDate = auditToDateObj(prevExitTime);
+        var prevExitDec = prevExitDate.getHours() + prevExitDate.getMinutes() / 60.0;
+        boundaryDec = Math.ceil(prevExitDec * 4) / 4.0;
       } else {
-        boundaryDec = 13.0;
+        // Especiales o sin geocerca: buscar traslado principal inter-sitios (> 5 km)
+        var maxTransitTime = null;
+        var maxDist = 0;
+        for (var r = 0; r < allUnitRoutes.length; r++) {
+          var dKm = parseFloat(allUnitRoutes[r].distance_km || allUnitRoutes[r].dist_km || 0);
+          if (dKm > 5.0 && dKm > maxDist) {
+            maxDist = dKm;
+            maxTransitTime = auditToDateObj(allUnitRoutes[r].start_time);
+          }
+        }
+        if (maxTransitTime) {
+          var transitDec = maxTransitTime.getHours() + maxTransitTime.getMinutes() / 60.0;
+          boundaryDec = Math.ceil(transitDec * 4) / 4.0;
+        } else {
+          boundaryDec = 13.0;
+        }
       }
     }
     
@@ -463,6 +492,24 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
   }
   lastInstall._boundaryEnd = lastInstall.T_a;
   
+  // Candado de Integridad Temporal: DE jamás puede ser mayor o igual a A
+  for (var k = 0; k < installRows.length; k++) {
+    var rowInst = installRows[k];
+    if (rowInst.T_de !== undefined && rowInst.T_a !== undefined && rowInst.T_de >= rowInst.T_a) {
+      Logger.log('   ⚠️ [ALERTA CORREGIDA] Horario invertido detectado en ' + rowInst.proyecto + ' (DE=' + rowInst.T_de + ', A=' + rowInst.T_a + '). Restaurando horario coherente.');
+      var origDe = parseTimeToDecimal(rowInst.deOriginal) || 8.0;
+      var origA  = parseTimeToDecimal(rowInst.aOriginal) || 18.0;
+      if (origDe < origA) {
+        rowInst.T_de = origDe;
+        rowInst.T_a  = origA;
+      } else {
+        rowInst.T_de = Math.max(8.0, rowInst.T_a - 2.0);
+      }
+      rowInst._boundaryStart = rowInst.T_de;
+      rowInst._boundaryEnd   = rowInst.T_a;
+    }
+  }
+  
   // 3. Partición estricta de rutas por proyecto (Evitar duplicación de KM y Tiempos)
   if (installRows.length > 1) {
     for (var k = 0; k < installRows.length; k++) {
@@ -487,7 +534,7 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     var matrixRowIdx = rowNum - 2;
     if (matrixRowIdx < 0 || matrixRowIdx >= allValues.length) continue;
     
-    if (auditEsProyectoInterno(row.proyecto)) continue;
+    if (auditEsProyectoInterno(row.proyecto, row.asunto)) continue;
     
     var isFirst = (i === 0);
     var isLast = (i === gpsRows.length - 1);
@@ -518,7 +565,9 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     
     if (res.alertaGeocerca) {
       currentRev = "REVISAR";
-      var warning = "[GPS] REVISAR: El vehiculo no visito la geocerca de este proyecto.";
+      var pNorm = auditNormalizar(row.proyecto);
+      var geo = geocercas[pNorm];
+      var warning = geo ? "[GPS] REVISAR: El vehiculo no visito la geocerca de este proyecto." : "[GPS] REVISAR: Proyecto sin geocerca registrada en catalogo Proyectos_GPS.";
       currentObs = currentObs ? (currentObs.indexOf(warning) !== -1 ? currentObs : currentObs + " | " + warning) : warning;
     }
     
@@ -772,45 +821,31 @@ function auditCalcularPermanenciaEnGeocerca(routes, rIndex, geoTarget) {
   if (!arrivalDate) return 0;
   
   var rad = geoTarget.radio ? Math.max(geoTarget.radio, 300.0) : 500.0;
-  var lastInsideDate = arrivalDate;
+  var departureDate = null;
   
   for (var k = rIndex + 1; k < routes.length; k++) {
     var rtNext = routes[k];
     var stDate = auditToDateObj(rtNext.start_time);
-    var edDate = auditToDateObj(rtNext.end_time);
-    
     var dStart = auditHaversineDistance(rtNext.start_lat, rtNext.start_lon, geoTarget.lat, geoTarget.lon);
-    var dEnd   = auditHaversineDistance(rtNext.end_lat, rtNext.end_lon, geoTarget.lat, geoTarget.lon);
     
-    if (dStart > rad) {
+    // Si el siguiente tramo arranca cerca o con deriva periférica (hasta 1,500m)
+    if (dStart <= rad || dStart <= 1500.0) {
+      departureDate = stDate;
       break;
-    }
-    
-    if (dEnd > rad) {
-      if (stDate && stDate > lastInsideDate) {
-        lastInsideDate = stDate;
-      }
-      break;
-    } else {
-      if (edDate && edDate > lastInsideDate) {
-        lastInsideDate = edDate;
-      }
     }
   }
   
-  if (lastInsideDate === arrivalDate && rIndex < routes.length - 1) {
-    var nextRt = routes[rIndex + 1];
-    var nextStDate = auditToDateObj(nextRt.start_time);
-    if (nextStDate && nextStDate > arrivalDate) {
-      var dNextStart = auditHaversineDistance(nextRt.start_lat, nextRt.start_lon, geoTarget.lat, geoTarget.lon);
-      if (dNextStart <= rad) {
-        lastInsideDate = nextStDate;
-      }
-    }
+  if (!departureDate && rIndex < routes.length - 1) {
+    // Si el siguiente tramo inició fuera, la permanencia fue hasta el inicio de ese siguiente viaje
+    departureDate = auditToDateObj(routes[rIndex + 1].start_time);
   }
   
-  var dwellSec = (lastInsideDate.getTime() - arrivalDate.getTime()) / 1000;
-  return dwellSec > 0 ? dwellSec : 0;
+  if (departureDate && departureDate > arrivalDate) {
+    return (departureDate.getTime() - arrivalDate.getTime()) / 1000.0;
+  }
+  
+  // Si es el último tramo del día, asumir estancia suficiente de fin de jornada
+  return 1800;
 }
 
 function auditCalcularPrimeraLlegadaProyecto(routes, projNorm, geocercas) {
@@ -820,25 +855,40 @@ function auditCalcularPrimeraLlegadaProyecto(routes, projNorm, geocercas) {
   
   for (var r = 0; r < routes.length; r++) {
     var rt = routes[r];
+    var isMatch = false;
+    var currentGeo = geoTarget;
+    
     if (geoTarget) {
       var dist = auditHaversineDistance(rt.end_lat, rt.end_lon, geoTarget.lat, geoTarget.lon);
-      if (dist <= radioTarget) {
-        var dwellSec = auditCalcularPermanenciaEnGeocerca(routes, r, geoTarget);
-        if (dwellSec >= 1800 || (r === routes.length - 1 && dwellSec >= 900)) {
-          return rt.end_time;
-        }
-      }
-    } else {
+      if (dist <= radioTarget) isMatch = true;
+    }
+    
+    if (!isMatch) {
       var destGeoId = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
       if (destGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, destGeoId), projNorm)) {
-        var geoFound = auditBuscarGeocercaPorId(geocercas, destGeoId);
-        var dwellSec = auditCalcularPermanenciaEnGeocerca(routes, r, geoFound);
-        if (dwellSec >= 1800 || (r === routes.length - 1 && dwellSec >= 900)) {
-          return rt.end_time;
-        }
+        currentGeo = auditBuscarGeocercaPorId(geocercas, destGeoId);
+        isMatch = true;
+      }
+    }
+    
+    if (isMatch && currentGeo) {
+      var dwellSec = auditCalcularPermanenciaEnGeocerca(routes, r, currentGeo);
+      // Umbral adaptativo: 10 minutos (600s), o si es el último tramo del turno
+      if (dwellSec >= 600 || (r === routes.length - 1 && dwellSec >= 300)) {
+        return rt.end_time;
       }
     }
   }
+  
+  // Fallback de consistencia: si el vehículo tocó la geocerca de destino, no dejar llegada vacía
+  for (var r = 0; r < routes.length; r++) {
+    var rt = routes[r];
+    var destGeoId = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
+    if (destGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, destGeoId), projNorm)) {
+      return rt.end_time;
+    }
+  }
+  
   return null;
 }
 
@@ -890,9 +940,21 @@ function auditContarRegresosMismoProyecto(routes, projNorm, geocercas) {
   return regresosCount;
 }
 
-function auditEsProyectoInterno(proyecto) {
+function auditEsFilaAusencia(proyecto, asunto) {
+  var p = auditNormalizar(proyecto);
+  var a = auditNormalizar(asunto);
+  var keywords = ['ausencia', 'falta', 'incapacidad', 'vacaciones', 'permiso', 'suspension'];
+  for (var k = 0; k < keywords.length; k++) {
+    if (p.indexOf(keywords[k]) !== -1 || a.indexOf(keywords[k]) !== -1) return true;
+  }
+  return false;
+}
+
+function auditEsProyectoInterno(proyecto, asunto) {
   var pNorm = auditNormalizar(proyecto);
-  return (pNorm === 'smarthaus gastos' || pNorm === 'oficina' || pNorm === 'smartcorp');
+  if (pNorm === 'smarthaus gastos' || pNorm === 'oficina' || pNorm === 'smartcorp') return true;
+  if (auditEsFilaAusencia(proyecto, asunto)) return true;
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1057,11 +1119,13 @@ function auditObtenerGeocercaDetectada(lat, lon, geocercas, preferredProjs) {
   if (preferredProjs && preferredProjs.length > 0) {
     for (var p = 0; p < preferredProjs.length; p++) {
       var pNorm = auditNormalizar(preferredProjs[p]);
-      var geo = geocercas[pNorm];
-      if (geo) {
-        var dist = auditHaversineDistance(lat, lon, geo.lat, geo.lon);
-        var rad = geo.radio ? Math.max(geo.radio, 300.0) : 500.0;
-        if (dist <= rad) return geo.id;
+      for (var key in geocercas) {
+        var geo = geocercas[key];
+        if (auditCoincideGeocercaConProyecto(geo, pNorm)) {
+          var dist = auditHaversineDistance(lat, lon, geo.lat, geo.lon);
+          var rad = geo.radio ? Math.max(geo.radio, 1500.0) : 1500.0;
+          if (dist <= rad) return geo.id;
+        }
       }
     }
   }
@@ -1083,7 +1147,20 @@ function auditCoincideGeocercaConProyecto(geo, projNorm) {
   if (!geo || !projNorm) return false;
   var gId = auditNormalizar(geo.id);
   var gNom = auditNormalizar(geo.nombre);
-  return (gId === projNorm || gNom === projNorm);
+  if (gId === projNorm || gNom === projNorm) return true;
+  if (gId && (gId.indexOf(projNorm) !== -1 || projNorm.indexOf(gId) !== -1)) return true;
+  if (gNom && (gNom.indexOf(projNorm) !== -1 || projNorm.indexOf(gNom) !== -1)) return true;
+  
+  // Coincidencia inteligente por Token Ancla (Raíz de 2 palabras)
+  var stopWords = { 'servicio': 1, 'servicios': 1, 'aires': 1, 'aire': 1, 'mantenimiento': 1, 'mantto': 1, 'instalacion': 1, 'pci': 1, 'cctv': 1, 'poliza': 1, 'ac': 1, 'site': 1, 'fase': 1, 'idf': 1, 'ampliacion': 1, 'oficinas': 1, 'oficina': 1 };
+  var pTokens = projNorm.split(' ').filter(function(t) { return t.length > 1 && !stopWords[t] && !/^\d{4}$/.test(t); });
+  var gTokens = (gId + ' ' + gNom).split(' ').filter(function(t) { return t.length > 1 && !stopWords[t] && !/^\d{4}$/.test(t); });
+  
+  if (pTokens.length >= 2) {
+    var anchor = pTokens.slice(0, 2).join(' '); // ej. 'notaria 31'
+    if (gTokens.join(' ').indexOf(anchor) !== -1) return true;
+  }
+  return false;
 }
 
 function auditHaversineDistance(lat1, lon1, lat2, lon2) {
@@ -1150,7 +1227,7 @@ function auditFiltrarRutasPorTurno(routes, deOriginal, aOriginal) {
     }
 
     var rtStart = hour + min / 60.0;
-    var isRtNocturno = (rtStart >= 18.0 || rtStart < 6.0);
+    var isRtNocturno = (rtStart >= 19.5 || rtStart < 5.5);
     return esNocturno ? isRtNocturno : !isRtNocturno;
   });
 }
