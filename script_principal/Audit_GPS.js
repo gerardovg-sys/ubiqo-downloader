@@ -184,6 +184,11 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
         if (!fA && mBitInit.A !== undefined) sheet.getRange(rowNum, mBitInit.A + 1).setValue("18:00");
       }
       
+      if (auditEsFilaAusencia(fProj, fAsunto)) {
+        if (mBitInit.DE !== undefined) sheet.getRange(rowNum, mBitInit.DE + 1).setValue("8:00");
+        if (mBitInit.A !== undefined) sheet.getRange(rowNum, mBitInit.A + 1).setValue("18:00");
+      }
+      
       if (fUnidad.toUpperCase() === 'NA' && auditNormalizar(fAsunto) === 'proyecto instalacion') {
         if (mBitInit.DE !== undefined) sheet.getRange(rowNum, mBitInit.DE + 1).setValue("8:00");
         if (mBitInit.A !== undefined) sheet.getRange(rowNum, mBitInit.A + 1).setValue("18:00");
@@ -356,7 +361,6 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
   Logger.log('=== [METRICAS LOG] Tecnico: ' + techRows[0].nombre + ' (' + gpsRows.length + ' filas en Bitacora) ===');
   
   var mBit = auditObtenerMapaIndicesBitacora(fullHeaders);
-  var isOnlySpecialProject = (gpsRows.length === 1 && (especiales[auditNormalizar(gpsRows[0].proyecto)] || auditEsProyectoInterno(gpsRows[0].proyecto)));
   
   for (var i = 0; i < gpsRows.length; i++) {
     var row = gpsRows[i];
@@ -368,6 +372,26 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
   var installRows = gpsRows.filter(function(r) {
     return !auditEsProyectoInterno(r.proyecto, r.asunto);
   });
+  
+  if (installRows.length === 0) {
+    for (var i = 0; i < gpsRows.length; i++) {
+      var row = gpsRows[i];
+      var rowNum = row.index + 1;
+      var matrixRowIdx = rowNum - 2;
+      if (matrixRowIdx >= 0 && matrixRowIdx < allValues.length) {
+        var fullRow = allValues[matrixRowIdx];
+        if (auditEsFilaAusencia(row.proyecto, row.asunto)) {
+          var deIdx = mBit.DE;
+          var aIdx = mBit.A;
+          if (deIdx !== undefined) fullRow[deIdx] = "8:00";
+          if (aIdx !== undefined) fullRow[aIdx] = "18:00";
+        }
+      }
+    }
+    return;
+  }
+  
+  var isOnlySpecialProject = (installRows.length === 1 && (especiales[auditNormalizar(installRows[0].proyecto)] || auditEsProyectoInterno(installRows[0].proyecto, installRows[0].asunto)));
   
   for (var k = 0; k < installRows.length; k++) {
     installRows[k]._boundaryStart = 8.0;
@@ -534,7 +558,16 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     var matrixRowIdx = rowNum - 2;
     if (matrixRowIdx < 0 || matrixRowIdx >= allValues.length) continue;
     
-    if (auditEsProyectoInterno(row.proyecto, row.asunto)) continue;
+    if (auditEsProyectoInterno(row.proyecto, row.asunto)) {
+      if (auditEsFilaAusencia(row.proyecto, row.asunto)) {
+        var fullRow = allValues[matrixRowIdx];
+        var deIdx = mBit.DE;
+        var aIdx = mBit.A;
+        if (deIdx !== undefined) fullRow[deIdx] = "8:00";
+        if (aIdx !== undefined) fullRow[aIdx] = "18:00";
+      }
+      continue;
+    }
     
     var isFirst = (i === 0);
     var isLast = (i === gpsRows.length - 1);
