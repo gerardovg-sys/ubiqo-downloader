@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-light: #64748b;
+      --border: #e2e8f0;
+      
+      --color-si: #10b981;
+      --color-ft: #f59e0b;
+      --color-no: #ef4444;
+      --color-na: #64748b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      padding: 24px;
+      font-size: 14px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    .header {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    .header h2 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .header p {
+      color: var(--text-light);
+      font-size: 13px;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .input-date {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+      transition: all 0.2s ease;
+      background-color: #fff;
+    }
+
+    .input-date:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 11px 16px;
+      border: none;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--border);
+      color: var(--text);
+      margin-top: 10px;
+    }
+
+    .btn-secondary:hover {
+      background-color: #cbd5e1;
+    }
+
+    /* LOADER SCREEN */
+    .loader-container {
+      display: none;
+      text-align: center;
+      padding: 30px 10px;
+    }
+
+    .spinner {
+      width: 45px;
+      height: 45px;
+      border: 4px solid var(--border);
+      border-top: 4px solid var(--primary);
+      border-radius: 50%;
+      margin: 0 auto 16px auto;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loader-text {
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .loader-subtext {
+      font-size: 12px;
+      color: var(--text-light);
+    }
+
+    /* ERROR SCREEN */
+    .error-container {
+      display: none;
+      text-align: center;
+      padding: 15px 5px;
+    }
+
+    .error-icon {
+      font-size: 40px;
+      color: var(--color-no);
+      margin-bottom: 12px;
+    }
+
+    .error-message {
+      font-weight: 500;
+      margin-bottom: 16px;
+      color: #991b1b;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* RESULTS SCREEN */
+    .results-container {
+      display: none;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .result-card {
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      border: 1px solid var(--border);
+      background-color: var(--bg);
+    }
+
+    .result-card.full-width {
+      grid-column: span 2;
+      background-color: #eff6ff;
+      border-color: #bfdbfe;
+    }
+
+    .result-val {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .result-lbl {
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-light);
+    }
+
+    .val-total { color: var(--primary); }
+    .val-si { color: var(--color-si); }
+    .val-ft { color: var(--color-ft); }
+    .val-no { color: var(--color-no); }
+    .val-na { color: var(--color-na); }
+
+    .alert-error {
+      background-color: #fef2f2;
+      border: 1px solid #fee2e2;
+      color: #991b1b;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- FORM SCREEN -->
+    <div id="formScreen">
+      <div class="header">
+        <h2 id="titleText">📅 Auditoría</h2>
+        <p id="descText">Cargando...</p>
+      </div>
+
+      <div class="card">
+        <div id="alertBox" class="alert-error"></div>
+        
+        <form id="auditForm" onsubmit="validarYEnviar(event)">
+          <!-- SINGLE DATE INPUT -->
+          <div class="form-group" id="singleDateGroup" style="display:none;">
+            <label for="fechaSeleccionada">Fecha a Auditar:</label>
+            <input type="date" id="fechaSeleccionada" class="input-date">
+          </div>
+
+          <!-- PERIOD DATE INPUTS -->
+          <div class="form-group" id="periodDateGroup" style="display:none;">
+            <div class="grid-2">
+              <div>
+                <label for="fechaInicio">Fecha Inicio:</label>
+                <input type="date" id="fechaInicio" class="input-date">
+              </div>
+              <div>
+                <label for="fechaFin">Fecha Fin:</label>
+                <input type="date" id="fechaFin" class="input-date">
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">
+            🚀 Ejecutar Auditoría
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- LOADER SCREEN -->
+    <div id="loaderScreen" class="loader-container">
+      <div class="spinner"></div>
+      <p class="loader-text">Procesando Auditoría</p>
+      <p class="loader-subtext">Cruzando datos con REPORTES_GENERAL, por favor espera...</p>
+    </div>
+
+    <!-- ERROR SCREEN -->
+    <div id="errorScreen" class="error-container">
+      <div class="error-icon">❌</div>
+      <h3>Ocurrió un error</h3>
+      <p id="errorMsg" class="error-message">Detalles del error aquí...</p>
+      <button class="btn btn-secondary" onclick="regresarAFormulario()">
+        🔄 Intentar de nuevo
+      </button>
+    </div>
+
+    <!-- RESULTS SCREEN -->
+    <div id="resultsScreen" class="results-container">
+      <div class="header">
+        <h2>🎉 Auditoría Completada</h2>
+        <p id="resultsPeriodText">Resultados escritos en Bitácora</p>
+      </div>
+      
+      <div class="card">
+        <div class="results-grid">
+          <div class="result-card full-width">
+            <div class="result-val val-total" id="resTotal">0</div>
+            <div class="result-lbl">Total Procesadas</div>
+          </div>
+          <div class="result-card">
+            <div class="result-val val-si" id="resSi">0</div>
+            <div class="result-lbl">✅ SI (A tiempo)</div>
+          </div>
+          <div class="result-card">
+            <div class="result-val val-ft" id="resFt">0</div>
+            <div class="result-lbl">⏰ FT (Fuera tiempo)</div>
+          </div>
+          <div class="result-card">
+            <div class="result-val val-no" id="resNo">0</div>
+            <div class="result-lbl">❌ NO (Sin reporte)</div>
+          </div>
+          <div class="result-card">
+            <div class="result-val val-na" id="resNa">0</div>
+            <div class="result-lbl">➖ NA (No aplica)</div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" onclick="cerrarDialogo()">
+          Cerrar Ventana
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Variable cargada por scriptlet en servidor
+    var mode = "<?= mode ?>"; 
+
+    // Inicializar UI al cargar
+    window.onload = function() {
+      var titleText = document.getElementById('titleText');
+      var descText = document.getElementById('descText');
+      var singleGroup = document.getElementById('singleDateGroup');
+      var periodGroup = document.getElementById('periodDateGroup');
+
+      if (mode === 'single') {
+        titleText.innerHTML = "📋 Llenar Reporte por Fecha";
+        descText.innerHTML = "Selecciona una fecha del calendario para auditar.";
+        singleGroup.style.display = "block";
+        
+        // Escribir la fecha de hoy por defecto
+        var hoyStr = new Date().toISOString().split('T')[0];
+        document.getElementById('fechaSeleccionada').value = hoyStr;
+      } else if (mode === 'period') {
+        titleText.innerHTML = "📅 Llenar Reporte por Periodo";
+        descText.innerHTML = "Selecciona el rango de fechas (Inicio y Fin) a auditar.";
+        periodGroup.style.display = "block";
+        
+        // Colocar fecha de hoy por defecto
+        var hoyStr = new Date().toISOString().split('T')[0];
+        document.getElementById('fechaInicio').value = hoyStr;
+        document.getElementById('fechaFin').value = hoyStr;
+      }
+    };
+
+    function mostrarAlerta(msg) {
+      var alertBox = document.getElementById('alertBox');
+      alertBox.innerHTML = msg;
+      alertBox.style.display = 'block';
+    }
+
+    function ocultarAlerta() {
+      document.getElementById('alertBox').style.display = 'none';
+    }
+
+    function validarYEnviar(e) {
+      e.preventDefault();
+      ocultarAlerta();
+
+      var datos = {
+        mode: mode
+      };
+
+      if (mode === 'single') {
+        var fechaVal = document.getElementById('fechaSeleccionada').value;
+        if (!fechaVal) {
+          mostrarAlerta("❌ Por favor selecciona una fecha.");
+          return;
+        }
+        datos.date = fechaVal; // Formato YYYY-MM-DD
+      } else if (mode === 'period') {
+        var inicioVal = document.getElementById('fechaInicio').value;
+        var finVal = document.getElementById('fechaFin').value;
+
+        if (!inicioVal || !finVal) {
+          mostrarAlerta("❌ Por favor selecciona ambas fechas (Inicio y Fin).");
+          return;
+        }
+
+        if (new Date(inicioVal) > new Date(finVal)) {
+          mostrarAlerta("❌ La Fecha Inicio no puede ser mayor que la Fecha Fin.");
+          return;
+        }
+
+        datos.startDate = inicioVal;
+        datos.endDate = finVal;
+      }
+
+      // Cambiar a pantalla de cargando
+      document.getElementById('formScreen').style.display = 'none';
+      document.getElementById('loaderScreen').style.display = 'block';
+
+      // Llamar al servidor en Apps Script
+      google.script.run
+        .withSuccessHandler(onSuccess)
+        .withFailureHandler(onFailure)
+        .ejecutarAuditoriaDesdeDialogo(datos);
+    }
+
+    function onSuccess(res) {
+      document.getElementById('loaderScreen').style.display = 'none';
+      
+      if (res.status === 'success') {
+        document.getElementById('resTotal').innerText = res.summary.total;
+        document.getElementById('resSi').innerText = res.summary.si;
+        document.getElementById('resFt').innerText = res.summary.ft;
+        document.getElementById('resNo').innerText = res.summary.no;
+        document.getElementById('resNa').innerText = res.summary.na;
+        
+        if (mode === 'single') {
+          document.getElementById('resultsPeriodText').innerText = "Fecha auditada: " + res.summary.period;
+        } else {
+          document.getElementById('resultsPeriodText').innerText = "Periodo auditado: " + res.summary.period;
+        }
+        
+        document.getElementById('resultsScreen').style.display = 'block';
+      } else {
+        onFailure({ message: res.message || "Error desconocido al procesar la auditoría." });
+      }
+    }
+
+    function onFailure(err) {
+      document.getElementById('loaderScreen').style.display = 'none';
+      document.getElementById('errorMsg').innerText = err.message;
+      document.getElementById('errorScreen').style.display = 'block';
+    }
+
+    function regresarAFormulario() {
+      document.getElementById('errorScreen').style.display = 'none';
+      document.getElementById('formScreen').style.display = 'block';
+    }
+
+    function cerrarDialogo() {
+      google.script.host.close();
+    }
+  </script>
+</body>
+</html>
