@@ -210,12 +210,8 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
     }
   }
   
-  for (var t = 0; t < uniqueTechs.length; t++) {
-    var activeTechName = uniqueTechs[t];
-    var currentDataNow = sheet.getDataRange().getValues();
-    var techRows = auditObtenerFilasTecnico(currentDataNow, activeTechName, dateStr);
-    auditProcesarDiaTecnicoInsertarFilas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, adminTracker);
-  }
+  // Pass 1: Inserción agrupada de filas administrativas (Inicio tardío o retorno temprano)
+  auditProcesarInsercionFilasAdministrativasAgrupadas(sheet, uniqueTechs, dateStr, dateUnitsData, geocercas, officeLat, officeLon, mapaEquivalencias, especiales);
   
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
@@ -241,63 +237,105 @@ function auditProcesarFechaGlobal(sheet, dateUnitsData, geocercas, officeLat, of
 }
 
 // ─────────────────────────────────────────────────────────────
-//  4. PASS 1: INSERCIÓN DE FILAS ADMINISTRATIVAS
+//  4. PASS 1: INSERCIÓN DE FILAS ADMINISTRATIVAS AGRUPADAS
 // ─────────────────────────────────────────────────────────────
 
-function auditProcesarDiaTecnicoInsertarFilas(sheet, techRows, dateUnitsData, geocercas, officeLat, officeLon, dateStr, mapaEquivalencias, especiales, isPrueba, adminTracker) {
-  if (!adminTracker) adminTracker = { startNextRow: null, endNextRow: null };
+function auditProcesarInsercionFilasAdministrativasAgrupadas(sheet, uniqueTechs, dateStr, dateUnitsData, geocercas, officeLat, officeLon, mapaEquivalencias, especiales) {
   var reverseMap = {};
   for (var gpsKey in mapaEquivalencias) {
     reverseMap[auditNormalizar(mapaEquivalencias[gpsKey])] = gpsKey;
   }
   
-  var gpsRows = [];
-  for (var i = 0; i < techRows.length; i++) gpsRows.push(techRows[i]);
-  if (gpsRows.length === 0) return;
+  var currentData = sheet.getDataRange().getValues();
+  var mBit = auditObtenerMapaIndicesBitacora(currentData[0]);
   
-  var isOnlySpecialProject = (gpsRows.length === 1 && (especiales[auditNormalizar(gpsRows[0].proyecto)] || auditEsProyectoInterno(gpsRows[0].proyecto)));
+  var tardioItems = [];
+  var tempranoItems = [];
   
-  for (var i = 0; i < gpsRows.length; i++) {
-    var row = gpsRows[i];
-    var routes = auditObtenerRutasUnidadStrict(dateUnitsData, row.unidad, reverseMap, mapaEquivalencias);
-    row.routes = auditFiltrarRutasPorTurno(routes, row.deOriginal, row.aOriginal);
+  for (var t = 0; t < uniqueTechs.length; t++) {
+    var techName = uniqueTechs[t];
+    var techRows = auditObtenerFilasTecnico(currentData, techName, dateStr);
+    if (!techRows || techRows.length === 0) continue;
+    
+    var hasSmarthaus = techRows.some(function(r) { return auditNormalizar(r.proyecto) === 'smarthaus gastos'; });
+    if (hasSmarthaus) continue;
+    
+    var installRows = techRows.filter(function(r) { return !auditEsProyectoInterno(r.proyecto); });
+    if (installRows.length === 0) continue;
+    
+    var isOnlySpecial = (installRows.length === 1 && (especiales[auditNormalizar(installRows[0].proyecto)] || auditEsProyectoInterno(installRows[0].proyecto)));
+    if (isOnlySpecial) continue;
+    
+    for (var i = 0; i < installRows.length; i++) {
+      var r = installRows[i];
+      var routes = auditObtenerRutasUnidadStrict(dateUnitsData, r.unidad, reverseMap, mapaEquivalencias);
+      r.routes = auditFiltrarRutasPorTurno(routes, r.deOriginal, r.aOriginal);
+    }
+    
+    var firstInstall = installRows[0];
+    var lastInstall  = installRows[installRows.length - 1];
+    
+    var firstStart = auditObtenerPrimerInicio(firstInstall.routes);
+    var firstStartDec = firstStart ? (firstStart.getHours() + firstStart.getMinutes() / 60.0) : 8.0;
+    
+    var lastEnd = auditObtenerUltimoFin(lastInstall.routes);
+    var lastEndDec = lastEnd ? (lastEnd.getHours() + lastEnd.getMinutes() / 60.0) : 18.0;
+    
+    if (firstStartDec - 8.0 >= 1.0) {
+      var startTardioDec = Math.ceil(firstStartDec * 4) / 4.0;
+      var startStr = formatDecimalToTime15Min(startTardioDec);
+      tardioItems.push({
+        techName: techName,
+        rol: techRows[0].rol,
+        de: "8:00",
+        a: startStr,
+        obs: "[GPS] Fila administrativa autogenerada por inicio tardio (08:00 a " + startStr + ")",
+        refRow: firstInstall.index + 1
+      });
+    } else if (lastEndDec < 17.0) {
+      var endTempranoDec = Math.floor(lastEndDec * 4) / 4.0;
+      var endStr = formatDecimalToTime15Min(endTempranoDec);
+      tempranoItems.push({
+        techName: techName,
+        rol: techRows[0].rol,
+        de: endStr,
+        a: "18:00",
+        obs: "[GPS] Fila administrativa autogenerada por retorno temprano (" + endStr + " a 18:00)",
+        refRow: lastInstall.index + 1
+      });
+    }
   }
   
-  var installRows = gpsRows.filter(function(r) {
-    return !auditEsProyectoInterno(r.proyecto);
-  });
-  
-  if (installRows.length === 0) return;
-  
-  var firstInstallRow = installRows[0];
-  var lastInstallRow = installRows[installRows.length - 1];
-  
-  var firstStart = auditObtenerPrimerInicio(firstInstallRow.routes);
-  var firstStartDec = firstStart ? (firstStart.getHours() + firstStart.getMinutes() / 60.0) : 8.0;
-  
-  var lastEnd = auditObtenerUltimoFin(lastInstallRow.routes);
-  var lastEndDec = lastEnd ? (lastEnd.getHours() + lastEnd.getMinutes() / 60.0) : 18.0;
-  
-  var techName = techRows[0].nombre;
-  var hasSmarthaus = gpsRows.some(function(r) { return auditNormalizar(r.proyecto) === 'smarthaus gastos'; });
-  
-  if (firstStartDec - 8.0 >= 1.0 && !isOnlySpecialProject && !hasSmarthaus) {
-    var startTardioDec = Math.ceil(firstStartDec * 4) / 4.0;
-    var startStr = formatDecimalToTime15Min(startTardioDec);
-    var targetIdx = adminTracker.startNextRow ? adminTracker.startNextRow : (firstInstallRow.index + 1);
-    var obs = "[GPS] Fila administrativa autogenerada por inicio tardio (08:00 a " + startStr + ")";
-    auditInsertarFilaAdministrativa(sheet, targetIdx, dateStr, techName, "SMARTHAUS GASTOS", "8:00", startStr, "Oficina", "NA", obs, techRows[0].rol);
-    adminTracker.startNextRow = targetIdx + 1;
-    return;
+  // 1. Inserción agrupada de inicio tardío (al principio del bloque)
+  if (tardioItems.length > 0) {
+    var minRow = 999999;
+    for (var i = 0; i < tardioItems.length; i++) {
+      if (tardioItems[i].refRow < minRow) minRow = tardioItems[i].refRow;
+    }
+    for (var i = 0; i < tardioItems.length; i++) {
+      var item = tardioItems[i];
+      auditInsertarFilaAdministrativa(sheet, minRow + i, dateStr, item.techName, "SMARTHAUS GASTOS", item.de, item.a, "Oficina", "NA", item.obs, item.rol);
+    }
   }
   
-  if (lastEndDec < 17.0 && !isOnlySpecialProject && !hasSmarthaus) {
-    var endTempranoDec = Math.floor(lastEndDec * 4) / 4.0;
-    var endStr = formatDecimalToTime15Min(endTempranoDec);
-    var targetIdx = lastInstallRow.index + 2;
-    var obs = "[GPS] Fila administrativa autogenerada por retorno temprano (" + endStr + " a 18:00)";
-    auditInsertarFilaAdministrativa(sheet, targetIdx, dateStr, techName, "SMARTHAUS GASTOS", endStr, "18:00", "Oficina", "NA", obs, techRows[0].rol);
-    adminTracker.endNextRow = targetIdx + 1;
+  // Actualizar datos actuales tras posibles inserciones tardías
+  currentData = sheet.getDataRange().getValues();
+  
+  // 2. Inserción agrupada de retorno temprano (al final de todo el bloque de la fecha)
+  if (tempranoItems.length > 0) {
+    var maxRow = 0;
+    for (var b = 1; b < currentData.length; b++) {
+      var fFecha = (mBit.FECHA !== undefined) ? auditNormalizarFechaKey(currentData[b][mBit.FECHA]) : '';
+      if (fFecha === dateStr) {
+        if (b + 1 > maxRow) maxRow = b + 1;
+      }
+    }
+    if (maxRow > 0) {
+      for (var i = 0; i < tempranoItems.length; i++) {
+        var item = tempranoItems[i];
+        auditInsertarFilaAdministrativa(sheet, maxRow + 1 + i, dateStr, item.techName, "SMARTHAUS GASTOS", item.de, item.a, "Oficina", "NA", item.obs, item.rol);
+      }
+    }
   }
 }
 
@@ -336,63 +374,109 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     installRows[k]._boundaryEnd = 18.0;
   }
   
+  // 1. Transiciones entre proyectos múltiples (Encadenamiento exacto DE = A anterior)
   for (var k = 0; k < installRows.length - 1; k++) {
     var rowPrev = installRows[k];
-    var rowCurr = installRows[k+1];
-    var prevEnd = auditObtenerUltimoFin(rowPrev.routes);
-    var currStart = auditObtenerPrimerInicio(rowCurr.routes);
+    var rowCurr = installRows[k + 1];
+    var pNormPrev = auditNormalizar(rowPrev.proyecto);
+    var pNormCurr = auditNormalizar(rowCurr.proyecto);
+    var allUnitRoutes = rowPrev.routes || [];
     
-    var midDec = 13.0;
-    if (prevEnd && currStart) {
-      var pDec = prevEnd.getHours() + prevEnd.getMinutes() / 60.0;
-      var cDec = currStart.getHours() + currStart.getMinutes() / 60.0;
-      midDec = Math.ceil(((pDec + cDec) / 2.0) * 4) / 4.0;
-    } else if (prevEnd) {
-      var pDec = prevEnd.getHours() + prevEnd.getMinutes() / 60.0;
-      midDec = Math.ceil(pDec * 4) / 4.0;
-    } else if (currStart) {
-      var cDec = currStart.getHours() + currStart.getMinutes() / 60.0;
-      midDec = Math.floor(cDec * 4) / 4.0;
+    var boundaryDec = null;
+    
+    // a) Verificar salida de geocerca de Proyecto Anterior
+    var prevExitTime = auditCalcularUltimaSalidaProyecto(allUnitRoutes, pNormPrev, geocercas);
+    
+    // b) Verificar si pasaron por oficina matriz tras salir del proyecto
+    var officeVisitDec = null;
+    if (prevExitTime) {
+      for (var r = 0; r < allUnitRoutes.length; r++) {
+        var rt = allUnitRoutes[r];
+        if (auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
+          var distEndOffice = auditHaversineDistance(rt.end_lat, rt.end_lon, officeLat, officeLon);
+          if (distEndOffice <= 250.0) {
+            var offDate = auditToDateObj(rt.end_time);
+            if (offDate) {
+              officeVisitDec = offDate.getHours() + offDate.getMinutes() / 60.0;
+              break;
+            }
+          }
+        }
+      }
     }
-    rowPrev._boundaryEnd = midDec;
-    rowCurr._boundaryStart = midDec;
+    
+    if (officeVisitDec !== null) {
+      boundaryDec = Math.ceil(officeVisitDec * 4) / 4.0;
+    } else if (prevExitTime) {
+      var prevExitDate = auditToDateObj(prevExitTime);
+      var prevExitDec = prevExitDate.getHours() + prevExitDate.getMinutes() / 60.0;
+      boundaryDec = Math.ceil(prevExitDec * 4) / 4.0;
+    } else {
+      // Especiales o sin geocerca: buscar traslado principal inter-sitios (> 5 km)
+      var maxTransitTime = null;
+      var maxDist = 0;
+      for (var r = 0; r < allUnitRoutes.length; r++) {
+        var dKm = parseFloat(allUnitRoutes[r].distance_km || allUnitRoutes[r].dist_km || 0);
+        if (dKm > 5.0 && dKm > maxDist) {
+          maxDist = dKm;
+          maxTransitTime = auditToDateObj(allUnitRoutes[r].start_time);
+        }
+      }
+      if (maxTransitTime) {
+        var transitDec = maxTransitTime.getHours() + maxTransitTime.getMinutes() / 60.0;
+        boundaryDec = Math.ceil(transitDec * 4) / 4.0;
+      } else {
+        boundaryDec = 13.0;
+      }
+    }
+    
+    rowPrev._boundaryEnd = boundaryDec;
+    rowCurr._boundaryStart = boundaryDec;
+    rowPrev.T_a = boundaryDec;
+    rowCurr.T_de = boundaryDec;
   }
   
-  for (var k = 0; k < installRows.length; k++) {
-    var rowInst = installRows[k];
-    var pNormInst = auditNormalizar(rowInst.proyecto);
-    var isEspecialInst = !!(especiales && especiales[pNormInst]);
-    
-    if (isEspecialInst) {
-      rowInst.T_de = 8.0;
-      rowInst.T_a = 18.0;
+  // 2. Horarios exteriores (Primer y Último proyecto)
+  var firstInstall = installRows[0];
+  var firstStart = auditObtenerPrimerInicio(firstInstall.routes);
+  if (firstStart) {
+    var fsDec = firstStart.getHours() + firstStart.getMinutes() / 60.0;
+    firstInstall.T_de = (fsDec - 8.0 >= 1.0 && !isOnlySpecialProject) ? (Math.ceil(fsDec * 4) / 4.0) : 8.0;
+  } else {
+    firstInstall.T_de = 8.0;
+  }
+  firstInstall._boundaryStart = firstInstall.T_de;
+  
+  var lastInstall = installRows[installRows.length - 1];
+  var lastEnd = auditObtenerUltimoFin(lastInstall.routes);
+  if (lastEnd) {
+    var leDec = lastEnd.getHours() + lastEnd.getMinutes() / 60.0;
+    if (leDec > 19.0) {
+      lastInstall.T_a = Math.ceil(leDec * 4) / 4.0;
+    } else if (leDec < 17.0 && !isOnlySpecialProject) {
+      lastInstall.T_a = Math.floor(leDec * 4) / 4.0;
     } else {
-      var isFirstInstall = (k === 0);
-      var isLastInstall = (k === installRows.length - 1);
+      lastInstall.T_a = 18.0;
+    }
+  } else {
+    lastInstall.T_a = 18.0;
+  }
+  lastInstall._boundaryEnd = lastInstall.T_a;
+  
+  // 3. Partición estricta de rutas por proyecto (Evitar duplicación de KM y Tiempos)
+  if (installRows.length > 1) {
+    for (var k = 0; k < installRows.length; k++) {
+      var rowInst = installRows[k];
+      var bStart = (rowInst._boundaryStart !== undefined) ? rowInst._boundaryStart : 0.0;
+      var bEnd   = (rowInst._boundaryEnd !== undefined) ? rowInst._boundaryEnd : 24.0;
       
-      var rowFirstStart = auditObtenerPrimerInicio(rowInst.routes);
-      var rowLastEnd = auditObtenerUltimoFin(rowInst.routes);
-      
-      if (isFirstInstall) {
-        if (rowFirstStart) {
-          var rFsDec = rowFirstStart.getHours() + rowFirstStart.getMinutes() / 60.0;
-          rowInst.T_de = (rFsDec - 8.0 >= 1.0 && !isOnlySpecialProject) ? (Math.ceil(rFsDec * 4) / 4.0) : 8.0;
-        } else {
-          rowInst.T_de = 8.0;
-        }
-      } else {
-        rowInst.T_de = (rowInst._boundaryStart !== undefined && rowInst._boundaryStart !== null) ? rowInst._boundaryStart : 12.0;
-      }
-      
-      if (isLastInstall) {
-        if (rowLastEnd) {
-          var rLeDec = rowLastEnd.getHours() + rowLastEnd.getMinutes() / 60.0;
-          rowInst.T_a = (rLeDec < 17.0 && !isOnlySpecialProject) ? (Math.floor(rLeDec * 4) / 4.0) : 18.0;
-        } else {
-          rowInst.T_a = 18.0;
-        }
-      } else {
-        rowInst.T_a = (rowInst._boundaryEnd !== undefined && rowInst._boundaryEnd !== null) ? rowInst._boundaryEnd : 18.0;
+      if (rowInst.routes && rowInst.routes.length > 0) {
+        rowInst.routes = rowInst.routes.filter(function(rt) {
+          var stObj = auditToDateObj(rt.start_time);
+          if (!stObj) return true;
+          var stHour = stObj.getHours() + stObj.getMinutes() / 60.0;
+          return (stHour >= (bStart - 0.05) && stHour < (bEnd + 0.05));
+        });
       }
     }
   }
@@ -506,12 +590,21 @@ function auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, 
   
   if (isEspecial) {
     var blockMetricsEsp = auditCalcularMetricasDeBloque(routes, officeLat, officeLon);
+    var espHorasExtra = "";
+    var lastEndEsp = auditObtenerUltimoFin(routes);
+    if (isLastOfPerson && lastEndEsp) {
+      var lastEndDecEsp = lastEndEsp.getHours() + lastEndEsp.getMinutes() / 60.0;
+      if (lastEndDecEsp > 19.0) {
+        espHorasExtra = Number((lastEndDecEsp - 18.0).toFixed(1));
+        row.T_a = Math.ceil(lastEndDecEsp * 4) / 4.0;
+      }
+    }
     return {
       deVal: formatDecimalToTime15Min(row.T_de || 8.0), aVal: formatDecimalToTime15Min(row.T_a || 18.0),
       horaSalida: "", horaEntrada: "",
       tiempoRecorrido: blockMetricsEsp.tiempoRecorrido,
       tiempoParadas: "", paradas: "", regresos: "",
-      km: blockMetricsEsp.km, horasExtra: "", horaSalProy: "", horaLlegProy: "",
+      km: blockMetricsEsp.km, horasExtra: espHorasExtra, horaSalProy: "", horaLlegProy: "",
       alertaGeocerca: false
     };
   }
@@ -537,6 +630,7 @@ function auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, 
     if (lastEndDecimal > 19.0) {
       var diffExtra = lastEndDecimal - 18.0;
       if (diffExtra > 0) horasExtraVal = Number(diffExtra.toFixed(1));
+      row.T_a = Math.ceil(lastEndDecimal * 4) / 4.0;
     } else {
       horaEntrada = formatTimeOnly(lastEnd);
     }
@@ -671,13 +765,78 @@ function auditRoutesTouchProject(routes, projNorm, geocercas) {
   return false;
 }
 
+function auditCalcularPermanenciaEnGeocerca(routes, rIndex, geoTarget) {
+  if (!routes || rIndex >= routes.length || !geoTarget) return 0;
+  
+  var arrivalDate = auditToDateObj(routes[rIndex].end_time);
+  if (!arrivalDate) return 0;
+  
+  var rad = geoTarget.radio ? Math.max(geoTarget.radio, 300.0) : 500.0;
+  var lastInsideDate = arrivalDate;
+  
+  for (var k = rIndex + 1; k < routes.length; k++) {
+    var rtNext = routes[k];
+    var stDate = auditToDateObj(rtNext.start_time);
+    var edDate = auditToDateObj(rtNext.end_time);
+    
+    var dStart = auditHaversineDistance(rtNext.start_lat, rtNext.start_lon, geoTarget.lat, geoTarget.lon);
+    var dEnd   = auditHaversineDistance(rtNext.end_lat, rtNext.end_lon, geoTarget.lat, geoTarget.lon);
+    
+    if (dStart > rad) {
+      break;
+    }
+    
+    if (dEnd > rad) {
+      if (stDate && stDate > lastInsideDate) {
+        lastInsideDate = stDate;
+      }
+      break;
+    } else {
+      if (edDate && edDate > lastInsideDate) {
+        lastInsideDate = edDate;
+      }
+    }
+  }
+  
+  if (lastInsideDate === arrivalDate && rIndex < routes.length - 1) {
+    var nextRt = routes[rIndex + 1];
+    var nextStDate = auditToDateObj(nextRt.start_time);
+    if (nextStDate && nextStDate > arrivalDate) {
+      var dNextStart = auditHaversineDistance(nextRt.start_lat, nextRt.start_lon, geoTarget.lat, geoTarget.lon);
+      if (dNextStart <= rad) {
+        lastInsideDate = nextStDate;
+      }
+    }
+  }
+  
+  var dwellSec = (lastInsideDate.getTime() - arrivalDate.getTime()) / 1000;
+  return dwellSec > 0 ? dwellSec : 0;
+}
+
 function auditCalcularPrimeraLlegadaProyecto(routes, projNorm, geocercas) {
   if (!routes || !routes.length) return null;
+  var geoTarget = geocercas[projNorm];
+  var radioTarget = geoTarget ? (geoTarget.radio ? Math.max(geoTarget.radio, 300.0) : 500.0) : 500.0;
+  
   for (var r = 0; r < routes.length; r++) {
     var rt = routes[r];
-    var destGeoId = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
-    if (destGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, destGeoId), projNorm)) {
-      return rt.end_time;
+    if (geoTarget) {
+      var dist = auditHaversineDistance(rt.end_lat, rt.end_lon, geoTarget.lat, geoTarget.lon);
+      if (dist <= radioTarget) {
+        var dwellSec = auditCalcularPermanenciaEnGeocerca(routes, r, geoTarget);
+        if (dwellSec >= 1800 || (r === routes.length - 1 && dwellSec >= 900)) {
+          return rt.end_time;
+        }
+      }
+    } else {
+      var destGeoId = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
+      if (destGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, destGeoId), projNorm)) {
+        var geoFound = auditBuscarGeocercaPorId(geocercas, destGeoId);
+        var dwellSec = auditCalcularPermanenciaEnGeocerca(routes, r, geoFound);
+        if (dwellSec >= 1800 || (r === routes.length - 1 && dwellSec >= 900)) {
+          return rt.end_time;
+        }
+      }
     }
   }
   return null;
@@ -696,27 +855,39 @@ function auditCalcularUltimaSalidaProyecto(routes, projNorm, geocercas) {
 }
 
 function auditContarRegresosMismoProyecto(routes, projNorm, geocercas) {
-  if (!routes || routes.length < 2) return 0;
-  var smartcorpVisits = 0;
-  var inProject = false;
+  if (!routes || routes.length < 3) return 0;
+  var regresosCount = 0;
+  var state = 'INITIAL';
   
   for (var r = 0; r < routes.length; r++) {
     var rt = routes[r];
     var startGeo = auditObtenerGeocercaDetectada(rt.start_lat, rt.start_lon, geocercas, [projNorm]);
-    var endGeo = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
+    var endGeo   = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
     
-    if (endGeo === 'SMARTCORP' && inProject) {
-      smartcorpVisits++;
-      inProject = false;
-    }
-    if (startGeo && startGeo !== 'SMARTCORP' && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, startGeo), projNorm)) {
-      inProject = true;
-    }
-    if (endGeo && endGeo !== 'SMARTCORP' && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, endGeo), projNorm)) {
-      inProject = true;
+    var isEndOffice   = (endGeo === 'SMARTCORP' || endGeo === 'OFICINA');
+    var isStartOffice = (startGeo === 'SMARTCORP' || startGeo === 'OFICINA');
+    
+    var isEndTargetProj   = (endGeo && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, endGeo), projNorm));
+    var isStartTargetProj = (startGeo && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, startGeo), projNorm));
+    
+    if (state === 'INITIAL') {
+      if (isEndTargetProj) {
+        state = 'IN_PROJ';
+      }
+    } else if (state === 'IN_PROJ') {
+      if (isEndOffice) {
+        state = 'IN_OFFICE';
+      }
+    } else if (state === 'IN_OFFICE') {
+      if (isEndTargetProj) {
+        regresosCount++;
+        state = 'IN_PROJ';
+      } else if (endGeo && !isEndOffice && !isEndTargetProj) {
+        state = 'INITIAL';
+      }
     }
   }
-  return smartcorpVisits > 1 ? (smartcorpVisits - 1) : 0;
+  return regresosCount;
 }
 
 function auditEsProyectoInterno(proyecto) {
@@ -889,14 +1060,16 @@ function auditObtenerGeocercaDetectada(lat, lon, geocercas, preferredProjs) {
       var geo = geocercas[pNorm];
       if (geo) {
         var dist = auditHaversineDistance(lat, lon, geo.lat, geo.lon);
-        if (dist <= 1500.0) return geo.id;
+        var rad = geo.radio ? Math.max(geo.radio, 300.0) : 500.0;
+        if (dist <= rad) return geo.id;
       }
     }
   }
   for (var key in geocercas) {
     var geo = geocercas[key];
     var dist = auditHaversineDistance(lat, lon, geo.lat, geo.lon);
-    if (dist <= geo.radio) return geo.id;
+    var rad = geo.radio ? Math.max(geo.radio, 300.0) : 500.0;
+    if (dist <= rad) return geo.id;
   }
   return null;
 }

@@ -26,6 +26,7 @@ function onOpen() {
       .addItem('📅 Llenar Reporte Enviado por Periodo', 'abrirDialogoPeriodo')
       .addSeparator()
       // — Carga Manual y GitHub —
+      .addItem('⚡ Ingerir y Procesar Archivos Pendientes', 'ejecutarIngerirArchivosPendientes')
       .addItem('📤 Cargar Archivo GPS Manual',           'abrirDialogoSubirGps')
       .addItem('📥 Forzar Descarga Ubiqo (GitHub)',      'ejecutarForzarDescargaUbiqoGitHub')
       .addSeparator()
