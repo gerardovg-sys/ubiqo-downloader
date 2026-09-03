@@ -36,6 +36,7 @@ function onOpen() {
       .addItem('🔄 Recalcular Diagnóstico y Prueba',    'ejecutarRecalcularDiagnosticoYPrueba')
       .addItem('🚀 Procesar GPS en Bitácora Real',      'ejecutarProcesamientoGPS')
       .addSeparator()
+      .addItem('⏰ Configurar Triggers Automáticos (2AM, 3AM, 8AM, 10PM)', 'crearTriggerIngestaNocturna')
       .addItem('ℹ️ Acerca del sistema de auditorías',   'mostrarAcercaDeAuditorias')
       .addToUi();
 }

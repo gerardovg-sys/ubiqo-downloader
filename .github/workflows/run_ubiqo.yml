@@ -2,8 +2,10 @@ name: SMARTCORP Ubiqo Downloader
 
 on:
   schedule:
-    # Corre de Martes a Sábado a las 8:00 AM UTC (2:00 AM hora de México / CST UTC-6)
-    - cron: '0 8 * * 2-6'
+    # Intento 1: 02:15 AM hora de México / CST (08:15 UTC) de Martes a Sábado
+    - cron: '15 8 * * 2-6'
+    # Intento 2 (Rescate Matutino): 08:15 AM hora de México / CST (14:15 UTC) de Martes a Sábado
+    - cron: '15 14 * * 2-6'
   workflow_dispatch:
     # Permite ejecutar el flujo manualmente desde el panel de GitHub
 

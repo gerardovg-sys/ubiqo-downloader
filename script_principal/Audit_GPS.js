@@ -444,7 +444,7 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
       if (prevExitTime) {
         for (var r = 0; r < allUnitRoutes.length; r++) {
           var rt = allUnitRoutes[r];
-          if (auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
+          if (r < allUnitRoutes.length - 1 && auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
             var distEndOffice = auditHaversineDistance(rt.end_lat, rt.end_lon, officeLat, officeLon);
             if (distEndOffice <= 250.0) {
               var offDate = auditToDateObj(rt.end_time);
@@ -491,28 +491,88 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
   
   // 2. Horarios exteriores (Primer y Último proyecto)
   var firstInstall = installRows[0];
+  
+  // Verificar si antes de firstInstall existe una fila interna o administrativa (ej. SMARTHAUS GASTOS de 8:00 a 10:00)
+  var precedingOfficeRow = null;
+  for (var i = 0; i < gpsRows.length; i++) {
+    if (gpsRows[i] === firstInstall) {
+      if (i > 0 && auditEsProyectoInterno(gpsRows[i - 1].proyecto, gpsRows[i - 1].asunto)) {
+        precedingOfficeRow = gpsRows[i - 1];
+      }
+      break;
+    }
+  }
+  
   var firstStart = auditObtenerPrimerInicio(firstInstall.routes);
-  if (firstStart) {
-    var fsDec = firstStart.getHours() + firstStart.getMinutes() / 60.0;
-    firstInstall.T_de = (fsDec - 8.0 >= 1.0 && !isOnlySpecialProject) ? (Math.ceil(fsDec * 4) / 4.0) : 8.0;
+  if (precedingOfficeRow) {
+    var prevEndDec = parseTimeToDecimal(precedingOfficeRow.aOriginal);
+    if (prevEndDec && prevEndDec > 8.0) {
+      firstInstall.T_de = prevEndDec;
+    } else if (firstStart) {
+      var fsDec = firstStart.getHours() + firstStart.getMinutes() / 60.0;
+      var calcStart = (fsDec - 8.0 >= 0.5) ? (Math.ceil(fsDec * 4) / 4.0) : 10.0;
+      firstInstall.T_de = calcStart;
+      precedingOfficeRow.T_a = calcStart;
+      precedingOfficeRow.aOriginal = formatDecimalToTime15Min(calcStart);
+    } else {
+      firstInstall.T_de = 10.0;
+      precedingOfficeRow.T_a = 10.0;
+      precedingOfficeRow.aOriginal = "10:00";
+    }
+    if (!precedingOfficeRow.T_de) precedingOfficeRow.T_de = 8.0;
   } else {
-    firstInstall.T_de = 8.0;
+    if (firstStart) {
+      var fsDec = firstStart.getHours() + firstStart.getMinutes() / 60.0;
+      firstInstall.T_de = (fsDec - 8.0 >= 1.0 && !isOnlySpecialProject) ? (Math.ceil(fsDec * 4) / 4.0) : 8.0;
+    } else {
+      firstInstall.T_de = 8.0;
+    }
   }
   firstInstall._boundaryStart = firstInstall.T_de;
   
   var lastInstall = installRows[installRows.length - 1];
   var lastEnd = auditObtenerUltimoFin(lastInstall.routes);
-  if (lastEnd) {
-    var leDec = lastEnd.getHours() + lastEnd.getMinutes() / 60.0;
-    if (leDec > 19.0) {
-      lastInstall.T_a = Math.ceil(leDec * 4) / 4.0;
-    } else if (leDec < 17.0 && !isOnlySpecialProject) {
-      lastInstall.T_a = Math.floor(leDec * 4) / 4.0;
+  
+  // Verificar si después de lastInstall existe una fila interna o administrativa
+  var succeedingOfficeRow = null;
+  for (var i = gpsRows.length - 1; i >= 0; i--) {
+    if (gpsRows[i] === lastInstall) {
+      if (i < gpsRows.length - 1 && auditEsProyectoInterno(gpsRows[i + 1].proyecto, gpsRows[i + 1].asunto)) {
+        succeedingOfficeRow = gpsRows[i + 1];
+      }
+      break;
+    }
+  }
+  
+  if (succeedingOfficeRow) {
+    var succStartDec = parseTimeToDecimal(succeedingOfficeRow.deOriginal);
+    if (succStartDec && succStartDec < 18.0) {
+      lastInstall.T_a = succStartDec;
+    } else if (lastEnd) {
+      var leDec = lastEnd.getHours() + lastEnd.getMinutes() / 60.0;
+      var calcEnd = Math.floor(leDec * 4) / 4.0;
+      lastInstall.T_a = calcEnd;
+      succeedingOfficeRow.T_de = calcEnd;
+      succeedingOfficeRow.deOriginal = formatDecimalToTime15Min(calcEnd);
+    } else {
+      lastInstall.T_a = 16.0;
+      succeedingOfficeRow.T_de = 16.0;
+      succeedingOfficeRow.deOriginal = "16:00";
+    }
+    if (!succeedingOfficeRow.T_a) succeedingOfficeRow.T_a = 18.0;
+  } else {
+    if (lastEnd) {
+      var leDec = lastEnd.getHours() + lastEnd.getMinutes() / 60.0;
+      if (leDec > 19.0) {
+        lastInstall.T_a = Math.ceil(leDec * 4) / 4.0;
+      } else if (leDec < 17.0 && !isOnlySpecialProject) {
+        lastInstall.T_a = Math.floor(leDec * 4) / 4.0;
+      } else {
+        lastInstall.T_a = 18.0;
+      }
     } else {
       lastInstall.T_a = 18.0;
     }
-  } else {
-    lastInstall.T_a = 18.0;
   }
   lastInstall._boundaryEnd = lastInstall.T_a;
   
@@ -559,18 +619,22 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     if (matrixRowIdx < 0 || matrixRowIdx >= allValues.length) continue;
     
     if (auditEsProyectoInterno(row.proyecto, row.asunto)) {
+      var fullRow = allValues[matrixRowIdx];
+      var deIdx = mBit.DE;
+      var aIdx = mBit.A;
       if (auditEsFilaAusencia(row.proyecto, row.asunto)) {
-        var fullRow = allValues[matrixRowIdx];
-        var deIdx = mBit.DE;
-        var aIdx = mBit.A;
         if (deIdx !== undefined) fullRow[deIdx] = "8:00";
         if (aIdx !== undefined) fullRow[aIdx] = "18:00";
+      } else {
+        if (row.T_de !== undefined && deIdx !== undefined) fullRow[deIdx] = formatDecimalToTime15Min(row.T_de);
+        if (row.T_a !== undefined && aIdx !== undefined) fullRow[aIdx] = formatDecimalToTime15Min(row.T_a);
       }
       continue;
     }
     
-    var isFirst = (i === 0);
-    var isLast = (i === gpsRows.length - 1);
+    var installIdx = installRows.indexOf(row);
+    var isFirst = (installIdx === 0);
+    var isLast  = (installIdx === installRows.length - 1);
     
     var res = auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, isFirst, isLast, dateStr, especiales);
     Logger.log('   -> Resultado Fila ' + rowNum + ': HoraSalida="' + res.horaSalida + '", HoraEntrada="' + res.horaEntrada + '", KM=' + res.km + ', Recorrido=' + res.tiempoRecorrido);
@@ -713,11 +777,10 @@ function auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, 
       var diffExtra = lastEndDecimal - 18.0;
       if (diffExtra > 0) horasExtraVal = Number(diffExtra.toFixed(1));
       row.T_a = Math.ceil(lastEndDecimal * 4) / 4.0;
-    } else {
-      horaEntrada = formatTimeOnly(lastEnd);
     }
+    horaEntrada = formatTimeOnly(lastEnd);
     var lastExitFromProj = auditCalcularUltimaSalidaProyecto(routes, projNorm, geocercas);
-    if (lastExitFromProj && lastEndDecimal <= 19.0) horaSalProy = formatTimeOnly(lastExitFromProj);
+    if (lastExitFromProj) horaSalProy = formatTimeOnly(lastExitFromProj);
   }
   
   var touchesProj = auditRoutesTouchProject(routes, projNorm, geocercas);
@@ -837,8 +900,16 @@ function auditObtenerUltimoFin(routes) {
 
 function auditRoutesTouchProject(routes, projNorm, geocercas) {
   if (!routes || !routes.length) return false;
+  var geoTarget = auditBuscarGeocercaPorId(geocercas, projNorm);
+  var rad = geoTarget && geoTarget.radio ? Math.max(geoTarget.radio, 500.0) : 1500.0;
+  
   for (var r = 0; r < routes.length; r++) {
     var rt = routes[r];
+    if (geoTarget) {
+      var dStart = auditHaversineDistance(rt.start_lat, rt.start_lon, geoTarget.lat, geoTarget.lon);
+      var dEnd   = auditHaversineDistance(rt.end_lat, rt.end_lon, geoTarget.lat, geoTarget.lon);
+      if (dStart <= rad || dEnd <= rad) return true;
+    }
     var startGeoId = auditObtenerGeocercaDetectada(rt.start_lat, rt.start_lon, geocercas, [projNorm]);
     var destGeoId = auditObtenerGeocercaDetectada(rt.end_lat, rt.end_lon, geocercas, [projNorm]);
     if (startGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, startGeoId), projNorm)) return true;
@@ -927,12 +998,27 @@ function auditCalcularPrimeraLlegadaProyecto(routes, projNorm, geocercas) {
 
 function auditCalcularUltimaSalidaProyecto(routes, projNorm, geocercas) {
   if (!routes || !routes.length) return null;
+  var geoTarget = auditBuscarGeocercaPorId(geocercas, projNorm);
+  var radioTarget = geoTarget && geoTarget.radio ? Math.max(geoTarget.radio, 500.0) : 1500.0;
+  
   for (var r = routes.length - 1; r >= 0; r--) {
     var rt = routes[r];
+    if (geoTarget) {
+      var dist = auditHaversineDistance(rt.start_lat, rt.start_lon, geoTarget.lat, geoTarget.lon);
+      if (dist <= radioTarget) {
+        return rt.start_time;
+      }
+    }
     var startGeoId = auditObtenerGeocercaDetectada(rt.start_lat, rt.start_lon, geocercas, [projNorm]);
     if (startGeoId && auditCoincideGeocercaConProyecto(auditBuscarGeocercaPorId(geocercas, startGeoId), projNorm)) {
       return rt.start_time;
     }
+  }
+  
+  if (routes.length >= 1) {
+    var lastRt = routes[routes.length - 1];
+    var touches = auditRoutesTouchProject(routes, projNorm, geocercas);
+    if (touches) return lastRt.start_time;
   }
   return null;
 }
