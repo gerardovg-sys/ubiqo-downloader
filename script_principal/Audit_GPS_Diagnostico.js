@@ -103,6 +103,8 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
         var fUnidad   = (mBit.UNIDAD !== undefined) ? String(row[mBit.UNIDAD] || '').trim() : '';
         var fProyecto = (mBit.PROYECTO !== undefined) ? String(row[mBit.PROYECTO] || '').trim() : '';
         var fNombre   = (mBit.NOMBRE !== undefined) ? String(row[mBit.NOMBRE] || '').trim() : '';
+        var fDe       = (mBit.DE !== undefined) ? String(row[mBit.DE] || '').trim() : '';
+        var fA        = (mBit.A !== undefined) ? String(row[mBit.A] || '').trim() : '';
         var normU     = auditNormalizar(fUnidad);
         var normP     = auditNormalizar(fProyecto);
         var normN     = auditNormalizar(fNombre);
@@ -114,7 +116,9 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
           nombreNorm:   normN,
           nombreRaw:    fNombre,
           proyecto:     fProyecto,
-          proyectoNorm: normP
+          proyectoNorm: normP,
+          deStr:        fDe,
+          aStr:         fA
         });
       }
     }
@@ -143,6 +147,7 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
         var preferredProjs   = [];
         var proyectosTextArr = [];
 
+        var tieneProyectoNocturno = false;
         for (var k = 0; k < filasBitacoraDelDia.length; k++) {
           var fBit = filasBitacoraDelDia[k];
           // Coincidencia flexible por Unidad O por Nombre del Técnico
@@ -156,6 +161,11 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
             if (fBit.proyectoNorm && preferredProjs.indexOf(fBit.proyectoNorm) === -1) {
               preferredProjs.push(fBit.proyectoNorm);
               proyectosTextArr.push(fBit.proyecto);
+            }
+            var deDec = parseTimeToDecimal(fBit.deStr);
+            var aDec  = parseTimeToDecimal(fBit.aStr);
+            if ((deDec !== null && deDec >= 18.0) || (deDec !== null && aDec !== null && aDec < deDec)) {
+              tieneProyectoNocturno = true;
             }
           }
         }
@@ -180,6 +190,14 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
             durTexto = formatSecToHMS(rt.duration_sec);
           }
           
+          // Si el tramo inicia después de las 18:15 y no hay proyecto nocturno registrado en Bitácora para esta unidad:
+          var rtStartObj = auditToDateObj(rt.start_time);
+          var rtStartDec = rtStartObj ? (rtStartObj.getHours() + rtStartObj.getMinutes() / 60.0) : 0.0;
+          var filaProyTexto = proyectoBitacoraText;
+          if (rtStartDec >= 18.25 && !tieneProyectoNocturno) {
+            filaProyTexto = '⚠️ [NOCTURNO PENDIENTE] Sin proyecto en Bitácora (' + proyectoBitacoraText + ')';
+          }
+
           totalSegmentosLogs.push([
             unidadOriginal,
             dateStr,
@@ -192,7 +210,7 @@ function ejecutarDiagnosticoDetalladoGPS(isSilent) {
             locFin,
             rt.distance_km,
             durTexto,
-            proyectoBitacoraText
+            filaProyTexto
           ]);
         }
       }

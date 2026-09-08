@@ -256,6 +256,9 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
   var proyectoCol = (mBit.PROYECTO !== undefined) ? mBit.PROYECTO : 3;
   var nombreCol = (mBit.NOMBRE !== undefined) ? mBit.NOMBRE : 4;
   var repEnvCol = (mBit.REPORTE_ENV !== undefined) ? mBit.REPORTE_ENV : 12;
+  var deCol     = (mBit.DE !== undefined) ? mBit.DE : 7;
+  var aCol      = (mBit.A !== undefined) ? mBit.A : 8;
+  var entCol    = (mBit.ENTRADA !== undefined) ? mBit.ENTRADA : 18;
 
   for (var b = 1; b < datosBitacora.length; b++) {
     var filaBit     = datosBitacora[b];
@@ -296,9 +299,19 @@ function auditProcesarPeriodo(fechaInicioStr, fechaFinStr) {
         resultado = 'NO';
         contNO++;
       } else {
+        var deVal = (deCol !== undefined) ? filaBit[deCol] : '';
+        var aVal = (aCol !== undefined) ? filaBit[aCol] : '';
+        var entVal = (entCol !== undefined) ? filaBit[entCol] : '';
+        var esTardioONocturno = auditEsProyectoTardioONocturno(deVal, aVal, entVal);
+
         var tieneSI = false;
         for (var c = 0; c < matches.length; c++) {
-          if (matches[c].fechaReporte === matches[c].fechaReferencia) {
+          var rep = matches[c];
+          if (rep.fechaReporte === rep.fechaReferencia) {
+            tieneSI = true;
+            break;
+          } else if (esTardioONocturno && auditEsMismoDiaODiaSiguiente(rep.fechaReferencia, rep.fechaReporte)) {
+            // Tolerancia nocturna: si el proyecto terminó tarde (>= 20:00) o de noche (cruzó medianoche) y reportó al día siguiente, es SI
             tieneSI = true;
             break;
           }
@@ -650,3 +663,40 @@ function crearTriggersProgramadosReportes() {
     if (ui) ui.alert('❌ Error configurando activadores', e.message, ui.ButtonSet.OK);
   }
 }
+
+/**
+ * Determina si una partida de Bitácora finalizó tarde (>= 20:00) o en turno nocturno (cruzando medianoche).
+ */
+function auditEsProyectoTardioONocturno(deStr, aStr, entStr) {
+  var parseTime = function(tStr) {
+    if (!tStr) return null;
+    if (tStr instanceof Date) return tStr.getHours() + tStr.getMinutes() / 60.0;
+    var parts = String(tStr).split(':');
+    if (parts.length < 2) return null;
+    var h = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h + m / 60.0;
+  };
+  var deDec  = parseTime(deStr);
+  var aDec   = parseTime(aStr);
+  var entDec = parseTime(entStr);
+  if (deDec !== null && aDec !== null && aDec < deDec) return true; // Turno cruzado (ej. 18:00 a 01:00)
+  if (aDec !== null && aDec >= 20.0) return true;                  // Hora A >= 20:00
+  if (entDec !== null && entDec >= 20.0) return true;              // Regreso a oficina >= 20:00
+  return false;
+}
+
+/**
+ * Verifica si fechaRepStr es el mismo día o exactamente el día siguiente a fechaRefStr (ambas DD/MM/YYYY).
+ */
+function auditEsMismoDiaODiaSiguiente(fechaRefStr, fechaRepStr) {
+  if (fechaRefStr === fechaRepStr) return true;
+  var dRef = auditParseFechaDDMMYYYY(fechaRefStr);
+  var dRep = auditParseFechaDDMMYYYY(fechaRepStr);
+  if (!dRef || !dRep) return false;
+  var diffMs = dRep.getTime() - dRef.getTime();
+  var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  return (diffDays === 1);
+}
+

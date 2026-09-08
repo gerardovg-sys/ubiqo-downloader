@@ -295,7 +295,8 @@ function auditProcesarInsercionFilasAdministrativasAgrupadas(sheet, uniqueTechs,
         de: "8:00",
         a: startStr,
         obs: "[GPS] Fila administrativa autogenerada por inicio tardio (08:00 a " + startStr + ")",
-        refRow: firstInstall.index + 1
+        refRow: firstInstall.index + 1,
+        blockKey: (firstInstall.unidad || 'NA') + '|' + (firstInstall.proyecto || '')
       });
     } else if (lastEndDec < 17.0) {
       var endTempranoDec = Math.floor(lastEndDec * 4) / 4.0;
@@ -306,40 +307,67 @@ function auditProcesarInsercionFilasAdministrativasAgrupadas(sheet, uniqueTechs,
         de: endStr,
         a: "18:00",
         obs: "[GPS] Fila administrativa autogenerada por retorno temprano (" + endStr + " a 18:00)",
-        refRow: lastInstall.index + 1
+        refRow: lastInstall.index + 1,
+        blockKey: (lastInstall.unidad || 'NA') + '|' + (lastInstall.proyecto || '')
       });
     }
   }
   
-  // 1. Inserción agrupada de inicio tardío (al principio del bloque)
-  if (tardioItems.length > 0) {
-    var minRow = 999999;
-    for (var i = 0; i < tardioItems.length; i++) {
-      if (tardioItems[i].refRow < minRow) minRow = tardioItems[i].refRow;
-    }
-    for (var i = 0; i < tardioItems.length; i++) {
-      var item = tardioItems[i];
-      auditInsertarFilaAdministrativa(sheet, minRow + i, dateStr, item.techName, "SMARTHAUS GASTOS", item.de, item.a, "Oficina", "NA", item.obs, item.rol);
-    }
+  // Agrupar items por cuadrilla / bloque (Unidad + Proyecto)
+  var tardioGroups = {};
+  for (var i = 0; i < tardioItems.length; i++) {
+    var it = tardioItems[i];
+    if (!tardioGroups[it.blockKey]) tardioGroups[it.blockKey] = [];
+    tardioGroups[it.blockKey].push(it);
   }
-  
-  // Actualizar datos actuales tras posibles inserciones tardías
-  currentData = sheet.getDataRange().getValues();
-  
-  // 2. Inserción agrupada de retorno temprano (al final de todo el bloque de la fecha)
-  if (tempranoItems.length > 0) {
-    var maxRow = 0;
-    for (var b = 1; b < currentData.length; b++) {
-      var fFecha = (mBit.FECHA !== undefined) ? auditNormalizarFechaKey(currentData[b][mBit.FECHA]) : '';
-      if (fFecha === dateStr) {
-        if (b + 1 > maxRow) maxRow = b + 1;
-      }
+
+  var tempranoGroups = {};
+  for (var i = 0; i < tempranoItems.length; i++) {
+    var it = tempranoItems[i];
+    if (!tempranoGroups[it.blockKey]) tempranoGroups[it.blockKey] = [];
+    tempranoGroups[it.blockKey].push(it);
+  }
+
+  var allInsertionGroups = [];
+  // Retornos tempranos: se insertan en bloque inmediatamente DESPUÉS del bloque de cuadrilla (maxRefRow + 1)
+  for (var key in tempranoGroups) {
+    var items = tempranoGroups[key];
+    var maxRef = 0;
+    for (var k = 0; k < items.length; k++) {
+      if (items[k].refRow > maxRef) maxRef = items[k].refRow;
     }
-    if (maxRow > 0) {
-      for (var i = 0; i < tempranoItems.length; i++) {
-        var item = tempranoItems[i];
-        auditInsertarFilaAdministrativa(sheet, maxRow + 1 + i, dateStr, item.techName, "SMARTHAUS GASTOS", item.de, item.a, "Oficina", "NA", item.obs, item.rol);
-      }
+    allInsertionGroups.push({
+      type: 'TEMPRANO',
+      insertRow: maxRef + 1,
+      items: items
+    });
+  }
+
+  // Inicios tardíos: se insertan en bloque inmediatamente ANTES del bloque de cuadrilla (minRefRow)
+  for (var key in tardioGroups) {
+    var items = tardioGroups[key];
+    var minRef = 999999;
+    for (var k = 0; k < items.length; k++) {
+      if (items[k].refRow < minRef) minRef = items[k].refRow;
+    }
+    allInsertionGroups.push({
+      type: 'TARDIO',
+      insertRow: minRef,
+      items: items
+    });
+  }
+
+  // Ordenar los grupos de mayor a menor fila (de abajo hacia arriba) para que las inserciones
+  // no alteren los índices de las filas que están arriba.
+  allInsertionGroups.sort(function(a, b) {
+    return b.insertRow - a.insertRow;
+  });
+
+  for (var g = 0; g < allInsertionGroups.length; g++) {
+    var grp = allInsertionGroups[g];
+    for (var i = 0; i < grp.items.length; i++) {
+      var item = grp.items[i];
+      auditInsertarFilaAdministrativa(sheet, grp.insertRow + i, dateStr, item.techName, "SMARTHAUS GASTOS", item.de, item.a, "Oficina", "NA", item.obs, item.rol);
     }
   }
 }
@@ -669,6 +697,31 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
       var geo = geocercas[pNorm];
       var warning = geo ? "[GPS] REVISAR: El vehiculo no visito la geocerca de este proyecto." : "[GPS] REVISAR: Proyecto sin geocerca registrada en catalogo Proyectos_GPS.";
       currentObs = currentObs ? (currentObs.indexOf(warning) !== -1 ? currentObs : currentObs + " | " + warning) : warning;
+    }
+    
+    // Detección de salidas nocturnas de la unidad sin proyecto nocturno asignado en Bitácora
+    var hasNocturnalRow = installRows.some(function(r) {
+      var deDec = parseTimeToDecimal(r.deOriginal);
+      var aDec  = parseTimeToDecimal(r.aOriginal);
+      return (deDec !== null && deDec >= 18.0) || (deDec !== null && aDec !== null && aDec < deDec);
+    });
+    
+    if (!hasNocturnalRow && isLast) {
+      var unitAllRoutes = auditObtenerRutasUnidadStrict(dateUnitsData, row.unidad, reverseMap, mapaEquivalencias);
+      var nightRoutes = unitAllRoutes.filter(function(rt) {
+        var stObj = auditToDateObj(rt.start_time);
+        if (!stObj) return false;
+        var stDec = stObj.getHours() + stObj.getMinutes() / 60.0;
+        return stDec >= 18.25;
+      });
+      if (nightRoutes.length > 0) {
+        var firstNightTime = formatTimeOnly(nightRoutes[0].start_time);
+        var totalNightKm = 0;
+        for (var nr = 0; nr < nightRoutes.length; nr++) totalNightKm += (Number(nightRoutes[nr].distance_km) || 0);
+        var nightAlert = "[GPS] ⚠️ ALERTA: Unidad registró salida nocturna (" + firstNightTime + ", " + totalNightKm.toFixed(1) + " km) sin proyecto nocturno asignado en Bitácora.";
+        currentObs = currentObs ? (currentObs.indexOf(nightAlert) !== -1 ? currentObs : currentObs + " | " + nightAlert) : nightAlert;
+        if (currentRev !== "REVISAR") currentRev = "REVISAR";
+      }
     }
     
     var strDeVal = formatDecimalToTime15Min(row.T_de || 8.0);
