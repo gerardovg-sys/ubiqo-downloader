@@ -7,6 +7,14 @@
         "serviceId": "drive",
         "version": "v2"
       }
+    ],
+    "libraries": [
+      {
+        "userSymbol": "VerificacionLib",
+        "version": "0",
+        "libraryId": "12ji8uv0gu9b7pK9IQ_91_BVRgZF1GmrbP4gd0GxLY5vwGRgBFPHqEvi0",
+        "developmentMode": true
+      }
     ]
   },
   "exceptionLogging": "STACKDRIVER",

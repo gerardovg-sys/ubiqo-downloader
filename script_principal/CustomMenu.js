@@ -39,4 +39,9 @@ function onOpen() {
       .addItem('⏰ Configurar Triggers Automáticos (2AM, 3AM, 8AM, 10PM)', 'crearTriggerIngestaNocturna')
       .addItem('ℹ️ Acerca del sistema de auditorías',   'mostrarAcercaDeAuditorias')
       .addToUi();
+
+  // 4. MENÚ VERIFICACIÓN CABLEADO (Nuevo proceso)
+  ui.createMenu(' Verificación Cableado')
+      .addItem('Process A: Analyze Quote', 'showProcessAForm')
+      .addToUi();
 }
