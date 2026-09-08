@@ -633,8 +633,11 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     }
     
     var installIdx = installRows.indexOf(row);
-    var isFirst = (installIdx === 0);
-    var isLast  = (installIdx === installRows.length - 1);
+    // Si hubo oficina previa (inicio tardío / oficina al inicio), este proyecto no lleva HORA DE SALIDA ni HORA LLEG PROY.
+    var isFirst = (installIdx === 0 && !precedingOfficeRow);
+    
+    // Si hubo oficina posterior (retorno temprano / oficina al final), este proyecto no lleva HORA DE ENTRADA ni HORA SAL PROY.
+    var isLast  = (installIdx === installRows.length - 1 && !succeedingOfficeRow);
     
     var res = auditCalcularMetricasParaFilaGPS(row, geocercas, officeLat, officeLon, isFirst, isLast, dateStr, especiales);
     Logger.log('   -> Resultado Fila ' + rowNum + ': HoraSalida="' + res.horaSalida + '", HoraEntrada="' + res.horaEntrada + '", KM=' + res.km + ', Recorrido=' + res.tiempoRecorrido);
