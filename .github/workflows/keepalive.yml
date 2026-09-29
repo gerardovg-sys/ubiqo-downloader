@@ -16,9 +16,11 @@ jobs:
       - name: Checkout repositorio
         uses: actions/checkout@v4
 
-      - name: Mantener flujo activo
-        uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          committer_username: 'github-actions[bot]'
-          committer_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'chore: keepalive prevent 60-day action suspension [skip ci]'
+      - name: Actualizar heartbeat de repositorio
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          date -u +"%Y-%m-%d %H:%M:%S UTC" > .github/keepalive.txt
+          git add .github/keepalive.txt
+          git commit -m "chore(ci): keepalive heartbeat [skip ci]" || echo "No changes to commit"
+          git push
