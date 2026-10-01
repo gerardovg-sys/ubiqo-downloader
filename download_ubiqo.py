@@ -80,7 +80,7 @@ def subir_a_google_drive(file_path, web_app_url, token):
                 "base64": base64_data
             }
             
-            r = requests.post(f"{web_app_url}?token={token}", json=payload, timeout=45)
+            r = requests.post(f"{web_app_url}?token={token}", json=payload, timeout=180)
             if r.status_code == 200:
                 result = r.json()
                 if result.get("status") == "success":
