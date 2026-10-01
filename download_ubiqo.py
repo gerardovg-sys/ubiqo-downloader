@@ -299,17 +299,17 @@ def main():
             # 11. Subida a Google Drive vía Web App
             if web_app_url:
                 success = subir_a_google_drive(local_path, web_app_url, token)
-                if success:
-                    try:
-                        os.remove(local_path)
-                        print("Archivo temporal local eliminado.")
-                    except Exception:
-                        pass
+                if not success:
+                    print(f"\n[ADVERTENCIA] No se pudo subir el archivo a Google Drive (verificar permisos de la Web App en Apps Script).")
+                    print(f"El archivo '{local_filename}' se conservará para ser archivado en GitHub Actions.")
+                    sys.exit(1)
             else:
                 print("\n[ERROR] No se configuró URL del Web App de Apps Script.")
+                sys.exit(1)
                 
         except Exception as e:
             print(f"Error durante la descarga o guardado del reporte: {e}")
+            sys.exit(1)
             
         print("Cerrando navegador...")
         browser.close()

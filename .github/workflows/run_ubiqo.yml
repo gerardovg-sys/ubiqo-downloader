@@ -37,3 +37,12 @@ jobs:
         TZ: America/Mexico_City
       run: |
         python download_ubiqo.py
+
+    - name: Archivar reporte Excel en GitHub Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: reporte-ubiqo-excel
+        path: "*.xlsx"
+        if-no-files-found: ignore
+        retention-days: 30

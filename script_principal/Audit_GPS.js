@@ -434,6 +434,12 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
     var pNormCurr = auditNormalizar(rowCurr.proyecto);
     var allUnitRoutes = rowPrev.routes || [];
     
+    // Límites estrictos para esta transición
+    var minBoundary = (rowPrev.T_de !== undefined) ? rowPrev.T_de : 8.0;
+    var remainingProjects = (installRows.length - 1) - k; // proyectos restantes después de rowPrev
+    var maxBoundary = 18.0 - (remainingProjects * 1.0); // reservar al menos 1 hora por proyecto restante
+    if (maxBoundary <= minBoundary) maxBoundary = Math.min(18.0, minBoundary + 1.0);
+    
     var boundaryDec = null;
     
     // Si cambiaron de camioneta física en el día:
@@ -447,8 +453,11 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
         if (distEndOffice <= 350.0) {
           var offDate = auditToDateObj(rt.end_time);
           if (offDate) {
-            prevOfficeDec = offDate.getHours() + offDate.getMinutes() / 60.0;
-            break;
+            var od = offDate.getHours() + offDate.getMinutes() / 60.0;
+            if (od >= minBoundary - 0.25) {
+              prevOfficeDec = od;
+              break;
+            }
           }
         }
       }
@@ -456,20 +465,28 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
       var currFirstStart = auditObtenerPrimerInicio(currRoutes);
       var currStartDec = currFirstStart ? (currFirstStart.getHours() + currFirstStart.getMinutes() / 60.0) : null;
       
-      if (prevOfficeDec !== null && currStartDec !== null && prevOfficeDec <= currStartDec) {
+      if (prevOfficeDec !== null && currStartDec !== null && prevOfficeDec <= currStartDec && prevOfficeDec >= minBoundary) {
         boundaryDec = Math.ceil(prevOfficeDec * 4) / 4.0;
-      } else if (currStartDec !== null && currStartDec > 12.0) {
+      } else if (currStartDec !== null && currStartDec >= minBoundary + 0.5) {
         boundaryDec = Math.floor(currStartDec * 4) / 4.0;
       } else {
-        boundaryDec = 13.0; // Corte estándar mediodía
+        boundaryDec = minBoundary + (18.0 - minBoundary) / (remainingProjects + 1);
       }
     } else {
-      // a) Verificar salida de geocerca de Proyecto Anterior
+      // a) Verificar salida de geocerca de Proyecto Anterior (solo si ocurrió después de minBoundary)
       var prevExitTime = auditCalcularUltimaSalidaProyecto(allUnitRoutes, pNormPrev, geocercas);
+      var prevExitDec = null;
+      if (prevExitTime) {
+        var pDate = auditToDateObj(prevExitTime);
+        if (pDate) {
+          var ped = pDate.getHours() + pDate.getMinutes() / 60.0;
+          if (ped >= minBoundary + 0.25) prevExitDec = ped;
+        }
+      }
       
       // b) Verificar si pasaron por oficina matriz tras salir del proyecto
       var officeVisitDec = null;
-      if (prevExitTime) {
+      if (prevExitDec !== null && prevExitTime) {
         for (var r = 0; r < allUnitRoutes.length; r++) {
           var rt = allUnitRoutes[r];
           if (r < allUnitRoutes.length - 1 && auditToDateObj(rt.start_time) >= auditToDateObj(prevExitTime)) {
@@ -477,8 +494,11 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
             if (distEndOffice <= 250.0) {
               var offDate = auditToDateObj(rt.end_time);
               if (offDate) {
-                officeVisitDec = offDate.getHours() + offDate.getMinutes() / 60.0;
-                break;
+                var ovd = offDate.getHours() + offDate.getMinutes() / 60.0;
+                if (ovd >= minBoundary + 0.25) {
+                  officeVisitDec = ovd;
+                  break;
+                }
               }
             }
           }
@@ -487,29 +507,34 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
       
       if (officeVisitDec !== null) {
         boundaryDec = Math.ceil(officeVisitDec * 4) / 4.0;
-      } else if (prevExitTime) {
-        var prevExitDate = auditToDateObj(prevExitTime);
-        var prevExitDec = prevExitDate.getHours() + prevExitDate.getMinutes() / 60.0;
+      } else if (prevExitDec !== null) {
         boundaryDec = Math.ceil(prevExitDec * 4) / 4.0;
       } else {
-        // Especiales o sin geocerca: buscar traslado principal inter-sitios (> 5 km)
+        // Especiales o sin geocerca: buscar traslado principal inter-sitios (> 3 km) que ocurra DESPUÉS de minBoundary
         var maxTransitTime = null;
         var maxDist = 0;
         for (var r = 0; r < allUnitRoutes.length; r++) {
           var dKm = parseFloat(allUnitRoutes[r].distance_km || allUnitRoutes[r].dist_km || 0);
-          if (dKm > 5.0 && dKm > maxDist) {
+          var stDate = auditToDateObj(allUnitRoutes[r].start_time);
+          var stDec = stDate ? (stDate.getHours() + stDate.getMinutes() / 60.0) : 0;
+          if (stDec >= minBoundary + 0.25 && dKm > 3.0 && dKm > maxDist) {
             maxDist = dKm;
-            maxTransitTime = auditToDateObj(allUnitRoutes[r].start_time);
+            maxTransitTime = stDate;
           }
         }
         if (maxTransitTime) {
           var transitDec = maxTransitTime.getHours() + maxTransitTime.getMinutes() / 60.0;
           boundaryDec = Math.ceil(transitDec * 4) / 4.0;
         } else {
-          boundaryDec = 13.0;
+          // Reparto proporcional equitativo según los proyectos que faltan
+          boundaryDec = minBoundary + (18.0 - minBoundary) / (remainingProjects + 1);
         }
       }
     }
+    
+    // Candado estricto: boundaryDec debe ser > minBoundary y <= maxBoundary
+    boundaryDec = Math.max(minBoundary + 0.5, Math.min(maxBoundary, boundaryDec));
+    boundaryDec = Math.round(boundaryDec * 4) / 4.0;
     
     rowPrev._boundaryEnd = boundaryDec;
     rowCurr._boundaryStart = boundaryDec;
@@ -611,11 +636,14 @@ function auditProcesarDiaTecnicoEscribirMetricas(sheet, techRows, dateUnitsData,
       Logger.log('   ⚠️ [ALERTA CORREGIDA] Horario invertido detectado en ' + rowInst.proyecto + ' (DE=' + rowInst.T_de + ', A=' + rowInst.T_a + '). Restaurando horario coherente.');
       var origDe = parseTimeToDecimal(rowInst.deOriginal) || 8.0;
       var origA  = parseTimeToDecimal(rowInst.aOriginal) || 18.0;
-      if (origDe < origA) {
+      if (origDe < origA && (origDe !== 8.0 || origA !== 18.0)) {
         rowInst.T_de = origDe;
         rowInst.T_a  = origA;
       } else {
-        rowInst.T_de = Math.max(8.0, rowInst.T_a - 2.0);
+        rowInst.T_a = Math.min(18.0, rowInst.T_de + 1.5);
+        if (rowInst.T_de >= rowInst.T_a) {
+          rowInst.T_de = Math.max(8.0, rowInst.T_a - 1.5);
+        }
       }
       rowInst._boundaryStart = rowInst.T_de;
       rowInst._boundaryEnd   = rowInst.T_a;
