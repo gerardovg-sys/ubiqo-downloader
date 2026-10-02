@@ -138,11 +138,7 @@ function ejecutarForzarDescargaUbiqoGitHub(isSilent) {
   }
   
   try {
-    var githubToken = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
-    if (!githubToken) {
-      githubToken = '';
-      try { PropertiesService.getScriptProperties().setProperty('GITHUB_TOKEN', githubToken); } catch(e) {}
-    }
+    var githubToken = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN') || '';
     
     var url = 'https://api.github.com/repos/gerardovg-sys/ubiqo-downloader/actions/workflows/run_ubiqo.yml/dispatches';
     var options = {
@@ -351,6 +347,29 @@ function auditIngerirArchivoGPS(file, shHistorial, archivoOrigen) {
     Logger.log('[INGESTA] Tramos de "' + archivoOrigen + '": ' + tramos.length);
 
     if (tramos.length > 0) {
+      // Verificar si los tramos de esta fecha ya fueron ingeridos previamente para evitar duplicaciones
+      var histLastRow = shHistorial.getLastRow();
+      if (histLastRow > 1) {
+        var histData = shHistorial.getDataRange().getValues();
+        var primerTramo = tramos[0];
+        var yaExiste = false;
+        for (var h = 1; h < histData.length; h++) {
+          var hFecha = auditFormatDate(histData[h][1]);
+          var hUnidad = String(histData[h][0] || '').trim();
+          var hHoraIni = (typeof auditExtractTimeHMS === 'function') 
+            ? auditExtractTimeHMS(histData[h][2]) 
+            : String(histData[h][2] || '').trim();
+          if (hFecha === primerTramo.fecha && hUnidad === primerTramo.unidad && hHoraIni === primerTramo.hora_inicio) {
+            yaExiste = true;
+            break;
+          }
+        }
+        if (yaExiste) {
+          Logger.log('[INGESTA] ℹ️ Los tramos de la fecha ' + primerTramo.fecha + ' ya existen en Historial_GPS. Omitiendo duplicados.');
+          return 0;
+        }
+      }
+
       var startRow = shHistorial.getLastRow() + 1;
       var rows = tramos.map(function(t) {
         return [
