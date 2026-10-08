@@ -157,9 +157,33 @@ def main():
     kendo_day = yesterday.day
     kendo_date_val = f"{kendo_year}/{kendo_month}/{kendo_day}"
     
+    formatted_date_query = yesterday.strftime("%d/%m/%Y")
     formatted_date_file = yesterday.strftime("%d-%m-%Y")
     
-    print(f"\nFecha a consultar (Ayer en México): {yesterday.strftime('%d/%m/%Y')} (Kendo: {kendo_date_val})")
+    print(f"\nFecha a consultar (Ayer en México): {formatted_date_query} (Kendo: {kendo_date_val})")
+    
+    # ── CANDADO PRE-DESCARGA: Consultar si la fecha ya está procesada o descargada ──
+    force_download = os.environ.get("FORCE_DOWNLOAD", "").lower() in ["1", "true", "yes"]
+    if force_download:
+        print("⚠️ Modo forzado manual activado (FORCE_DOWNLOAD=true). Omitiendo candados...")
+    elif web_app_url:
+        print(f"Consultando candados de seguridad en SMARTCORP para la fecha {formatted_date_query}...")
+        try:
+            check_url = f"{web_app_url}?action=check_candado&fecha={formatted_date_query}&token={token}"
+            resp = requests.get(check_url, timeout=25)
+            if resp.status_code == 200:
+                candado_data = resp.json()
+                if candado_data.get("candado_activo"):
+                    print(f"\n🔒 [CANDADO ACTIVO]: {candado_data.get('motivo')}")
+                    print(f"El reporte de la fecha {formatted_date_query} ya está registrado/procesado en SMARTCORP.")
+                    print("Finalizando ejecución exitosamente sin descargar archivos duplicados.")
+                    sys.exit(0)
+                else:
+                    print(f"Candados verificados: La fecha {formatted_date_query} está pendiente. Procediendo con la descarga...")
+            else:
+                print(f"Aviso al consultar candados (HTTP {resp.status_code}). Continuando flujo normal...")
+        except Exception as e:
+            print(f"Aviso al consultar candados ({e}). Continuando flujo normal...")
     
     with sync_playwright() as p:
         print("Iniciando navegador...")

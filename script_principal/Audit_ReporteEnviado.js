@@ -403,6 +403,19 @@ function auditGuardarArchivoGPS(nombre, contenidoBase64) {
       var folderProcesados = DriveApp.getFolderById(AUDIT_GPS_PROCESADOS_FOLDER_ID);
       auditMoverArchivoAProcessados(file, folderProcesados, nuevoNombre);
 
+      // 🔒 Candado de Seguridad: Si no hay tramos nuevos (ya existían o ya fueron procesados),
+      // NO sobreescribir Bitacora_Prueba ni Diagnostico_GPS para no borrar el trabajo del usuario.
+      if (tramosIngested === 0) {
+        Logger.log('[CARGA GPS] 🔒 Candado activado: 0 tramos nuevos ingeridos (fecha ya existente/procesada). Omitiendo sobrescritura de Diagnóstico y Bitacora_Prueba.');
+        return {
+          status: 'skipped',
+          fileId: file.getId(),
+          fileName: nuevoNombre,
+          tramosIngested: 0,
+          message: 'Tramos ya existentes previamente en Historial_GPS. Sobrescritura prevenida con éxito.'
+        };
+      }
+
       // ── PASO 2: EJECUTAR DIAGNÓSTICO EN DIAGNOSTICO_GPS ──
       Logger.log('[CARGA GPS] Ejecutando Diagnóstico GPS...');
       ejecutarDiagnosticoDetalladoGPS(true);

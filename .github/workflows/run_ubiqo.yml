@@ -4,15 +4,15 @@ on:
   schedule:
     # Intento 1 (Madrugada principal): 02:23 AM hora de México / CST (08:23 UTC) de Martes a Sábado
     - cron: '23 8 * * 2-6'
-    # Intento 2 (Rescate Madrugada): 03:47 AM hora de México / CST (09:47 UTC) de Martes a Sábado
-    - cron: '47 9 * * 2-6'
-    # Intento 3 (Rescate Previo al Trabajo): 06:43 AM hora de México / CST (12:43 UTC) de Martes a Sábado
-    - cron: '43 12 * * 2-6'
-    # Intento 4 (Rescate Pre-Operativo): 07:23 AM hora de México / CST (13:23 UTC) de Martes a Sábado
-    - cron: '23 13 * * 2-6'
-    # Intento 5 (Rescate Matutino): 08:15 AM hora de México / CST (14:15 UTC) de Martes a Sábado
-    - cron: '15 14 * * 2-6'
+    # Intento 2 (Rescate Matutino antes de oficina): 07:13 AM hora de México / CST (13:13 UTC) de Martes a Sábado
+    - cron: '13 13 * * 2-6'
   workflow_dispatch:
+    inputs:
+      force_download:
+        description: 'Forzar descarga (ignorar candado de fecha ya procesada)'
+        required: false
+        default: false
+        type: boolean
     # Permite ejecutar el flujo manualmente desde el panel de GitHub
 
 jobs:
@@ -40,6 +40,7 @@ jobs:
         UBIQO_PASS: ${{ secrets.UBIQO_PASS }}
         WEB_APP_URL: ${{ secrets.WEB_APP_URL }}
         WEB_APP_TOKEN: ${{ secrets.WEB_APP_TOKEN }}
+        FORCE_DOWNLOAD: ${{ inputs.force_download || 'false' }}
         TZ: America/Mexico_City
       run: |
         python download_ubiqo.py
