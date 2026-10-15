@@ -716,13 +716,15 @@ function getPersonalActivo() {
   }
 }
 
-function calcularEvaluacionSemanalTecnico(nombreTecnico, fechaInicio, fechaFin) {
-  // ── Leer Bitácora ──────────────────────────────────────────────
-  const ss    = SpreadsheetApp.openById(SHEET_EVALUACION_ID);
-  const sheet = ss.getSheetByName('Bitácora');
-  if (!sheet) throw new Error('No se encontró la hoja Bitácora');
-
-  const raw     = sheet.getDataRange().getDisplayValues();
+function calcularEvaluacionSemanalTecnico(nombreTecnico, fechaInicio, fechaFin, preloadedRawData) {
+  // ── Leer Bitácora (reutiliza si ya fue pre-cargada) ───────────
+  let raw = preloadedRawData;
+  if (!raw) {
+    const ss    = SpreadsheetApp.openById(SHEET_EVALUACION_ID);
+    const sheet = ss.getSheetByName('Bitácora');
+    if (!sheet) throw new Error('No se encontró la hoja Bitácora');
+    raw = sheet.getDataRange().getDisplayValues();
+  }
   const headers = raw[0].map(h => h.toUpperCase().trim());
   const gIdx    = (name) => headers.indexOf(name.toUpperCase());
 
@@ -817,34 +819,61 @@ function calcularEvaluacionSemanalTecnico(nombreTecnico, fechaInicio, fechaFin) 
   };
 
   // ── Cálculos Globales Semanales ─────────────────────────────
-  let sal = 0, salC = 0, ent = 0, entC = 0, par = 0, reg = 0, ret = 0, fal = 0;
+  let salTotal = 0, entTotal = 0, parScoreTotal = 0, diasEval = 0;
+  let reg = 0, ret = 0, fal = 0;
   const reps = [];
 
   rows.forEach(r => {
-    const sS = calcSalidaScore(r.horaSalida);
-    if (sS !== null) { sal += sS; salC++; }
-    const sE = calcEntradaScore(r.horaEntrada);
-    if (sE !== null) { ent += sE; entC++; }
-    reps.push(r.reporte);
     const isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].includes(r.asistencia);
-    if (!isAusencia) { par += timeToMinutes(r.tiempoParadas); }
-    reg += r.regresos;
+    const isFalta = r.asistencia === 'FALTA';
+    const isReporteNA = r.reporte === 'NA';
+
+    if (isFalta) {
+      fal++;
+      return;
+    }
+    if (isAusencia) {
+      return;
+    }
+
     if (r.asistencia === 'RETARDO') ret++;
-    if (r.asistencia === 'FALTA') fal++;
+    reg += r.regresos;
+
+    // Solo evaluar días de obra (excluye proyectos especiales/gastos NA)
+    if (!isReporteNA) {
+      diasEval++;
+      const sS = calcSalidaScore(r.horaSalida);
+      salTotal += (sS !== null ? sS : 10); // Otorga 10 si no existe checada de salida
+
+      const sE = calcEntradaScore(r.horaEntrada);
+      entTotal += (sE !== null ? sE : 10); // Otorga 10 si no existe checada de entrada
+
+      const pMin = timeToMinutes(r.tiempoParadas);
+      parScoreTotal += (pMin > 10 ? 0 : 10);
+
+      reps.push(r.reporte);
+    }
   });
 
-  const promAM = salC > 0 ? sal / salC : 10;
-  const promPM = entC > 0 ? ent / entC : 10;
-  const promRep = calcReportesScore(reps);
-  const promPar = par > 10 ? 0 : 10;
+  const promAM = diasEval > 0 ? (salTotal / diasEval) : 10;
+  const promPM = diasEval > 0 ? (entTotal / diasEval) : 10;
+  const promRep = reps.length > 0 ? calcReportesScore(reps) : 10;
+  const promPar = diasEval > 0 ? (parScoreTotal / diasEval) : 10;
   const penalizacion = (reg * 0.5) + (ret * 0.5) + (fal * 1.0);
-  const promFinal = Math.max(0, (promAM * 0.25 + promPM * 0.25 + promRep * 0.40 + promPar * 0.10) - penalizacion);
+
+  let promFinal = null;
+  if (diasEval > 0) {
+    promFinal = Math.max(0, (promAM * 0.25 + promPM * 0.25 + promRep * 0.40 + promPar * 0.10) - penalizacion);
+  } else if (fal > 0) {
+    promFinal = 0;
+  }
 
   const diasObra = [...new Set(rows.filter(r => 
     r.asistencia !== 'FALTA' && 
     r.asistencia !== 'VACACIONES' && 
     r.asistencia !== 'PERMISO' && 
-    r.asistencia !== 'INCAPACIDAD'
+    r.asistencia !== 'INCAPACIDAD' &&
+    r.reporte !== 'NA'
   ).map(r => r.fecha))].length;
 
   const diasTotales = [...new Set(rows.map(r => r.fecha))].length;
@@ -865,27 +894,79 @@ function calcularEvaluacionSemanalTecnico(nombreTecnico, fechaInicio, fechaFin) 
   const pad = (str, len) => String(str || '').substring(0, len).padEnd(len, ' ');
   const separador = '─'.repeat(85);
 
+  const calcDailyScore = (r) => {
+    const isFalta = r.asistencia === 'FALTA';
+    const isRetardo = r.asistencia === 'RETARDO';
+    const isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].includes(r.asistencia);
+    const isReporteNA = r.reporte === 'NA';
+
+    if (isFalta) return 0;
+    if (isAusencia || isReporteNA) return null; // No califica directamente (proyecto especial o ausencia)
+
+    // Si no existe dato de GPS, se otorgan los puntos (10 pts) para no perjudicar
+    let sS = calcSalidaScore(r.horaSalida);
+    let sE = calcEntradaScore(r.horaEntrada);
+    let amVal = sS !== null ? sS : 10;
+    let pmVal = sE !== null ? sE : 10;
+    let repVal = (r.reporte === 'SI') ? 10 : (r.reporte === 'FT' || r.reporte === 'FF' || r.reporte === 'FT FF') ? 5 : (r.reporte === 'NO') ? 0 : 10;
+    let parMins = timeToMinutes(r.tiempoParadas);
+    let parVal = parMins > 10 ? 0 : 10;
+
+    const pen = (r.regresos * 0.5) + (isRetardo ? 0.5 : 0);
+    return Math.max(0, (amVal * 0.25 + pmVal * 0.25 + repVal * 0.40 + parVal * 0.10) - pen);
+  };
+
   let tablaDetalle = `${pad('FECHA', 12)} | ${pad('PROYECTO', 20)} | ${pad('SALIDA', 6)} | ${pad('ENTRADA', 7)} | ${pad('REP', 5)} | ${pad('PAR', 5)} | ${pad('REG', 3)} | ${pad('RET', 3)} | ${pad('FAL', 3)} | ${pad('FINAL', 5)}\n`;
   tablaDetalle += separador + '\n';
   rows.forEach(r => {
     const isFalta = r.asistencia === 'FALTA';
     const isRetardo = r.asistencia === 'RETARDO';
     const isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].includes(r.asistencia);
-    let amVal = calcSalidaScore(r.horaSalida), pmVal = calcEntradaScore(r.horaEntrada), repVal = calcReportesScore([r.reporte]), parMins = timeToMinutes(r.tiempoParadas), parVal = parMins > 10 ? 0 : 10;
-    let dailyFinal = isFalta ? 0 : isAusencia ? 10 : Math.max(0, ((amVal !== null ? amVal : 10)*0.25 + (pmVal !== null ? pmVal : 10)*0.25 + (repVal !== null ? repVal : 10)*0.4 + parVal*0.1) - ((r.regresos * 0.5) + (isRetardo ? 0.5 : 0)));
-    tablaDetalle += `${pad(r.fecha, 12)} | ${pad(r.proyecto, 20)} | ${pad(r.horaSalida || '—', 6)} | ${pad(r.horaEntrada || '—', 7)} | ${pad(r.reporte, 5)} | ${pad(parMins + 'm', 5)} | ${pad(r.regresos, 3)} | ${pad(isRetardo?1:0, 3)} | ${pad(isFalta?1:0, 3)} | ${pad(dailyFinal.toFixed(2), 5)} ${isFalta ? 'FALTA' : isRetardo ? 'RET' : isAusencia ? r.asistencia : ''}\n`;
+    const isReporteNA = r.reporte === 'NA';
+    let parMins = timeToMinutes(r.tiempoParadas);
+    let dScore = calcDailyScore(r);
+    let finalStr = dScore !== null ? dScore.toFixed(2) : '  —  ';
+    let tag = isFalta ? 'FALTA' : isRetardo ? 'RET' : isAusencia ? r.asistencia : isReporteNA ? 'ESP/NA' : '';
+
+    tablaDetalle += `${pad(r.fecha, 12)} | ${pad(r.proyecto, 20)} | ${pad(r.horaSalida || '—', 6)} | ${pad(r.horaEntrada || '—', 7)} | ${pad(r.reporte, 5)} | ${pad(isReporteNA ? '—' : parMins + 'm', 5)} | ${pad(r.regresos, 3)} | ${pad(isRetardo ? 1 : 0, 3)} | ${pad(isFalta ? 1 : 0, 3)} | ${pad(finalStr, 5)} ${tag}\n`;
   });
 
-  let textoResumen = `REPORTE SEMANAL DE DESEMPEÑO - SMARTCORP\nTécnico: ${nombreTecnico}\nSemana: ${iniStr} al ${finStr}\n\n1. DESEMPEÑO GENERAL\n${separador}\n   * Nota Promedio Final: ${promFinal.toFixed(2)} / 10\n   * Días en Obra: ${diasObra} / ${diasTotales}\n\n2. REPORTES\n   - SI: ${reportesSI}, FT/FF: ${reportesFT}, NO: ${reportesNO}, NA: ${reportesNA}\n\n3. KPIs\n   * AM: ${promAM.toFixed(2)}, PM: ${promPM.toFixed(2)}, REP: ${promRep.toFixed(2)}, PAR: ${promPar.toFixed(2)}\n\n4. INCIDENCIAS\n   * Faltas: ${fal}, Retardos: ${ret}, Regresos: ${reg}, Pen: -${penalizacion.toFixed(2)}\n\n5. DETALLE\n${tablaDetalle}`;
+  const colorProm = promFinal !== null ? (promFinal >= 8 ? '#16a34a' : promFinal >= 6 ? '#d97706' : '#dc2626') : '#64748b';
+  const promFinalStr = promFinal !== null ? promFinal.toFixed(2) : 'N/A';
+  const promAMStr = promAM !== null ? promAM.toFixed(1) : '—';
+  const promPMStr = promPM !== null ? promPM.toFixed(1) : '—';
+  const promRepStr = promRep !== null ? promRep.toFixed(1) : '—';
+  const promParStr = promPar !== null ? promPar.toFixed(1) : '—';
+
+  let textoResumen = `REPORTE SEMANAL DE DESEMPEÑO - SMARTCORP\nTécnico: ${nombreTecnico}\nSemana: ${iniStr} al ${finStr}\n\n1. DESEMPEÑO GENERAL\n${separador}\n   * Nota Promedio Final: ${promFinalStr} / 10\n   * Días en Obra: ${diasObra} / ${diasTotales}\n\n2. REPORTES\n   - SI: ${reportesSI}, FT/FF: ${reportesFT}, NO: ${reportesNO}, NA: ${reportesNA}\n\n3. KPIs\n   * AM: ${promAMStr}, PM: ${promPMStr}, REP: ${promRepStr}, PAR: ${promParStr}\n\n4. INCIDENCIAS\n   * Faltas: ${fal}, Retardos: ${ret}, Regresos: ${reg}, Pen: -${penalizacion.toFixed(2)}\n\n5. DETALLE\n${tablaDetalle}`;
 
   const filasTabla = rows.map(r => {
-    const isFalta = r.asistencia === 'FALTA', isRetardo = r.asistencia === 'RETARDO', isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].includes(r.asistencia);
-    let amVal = calcSalidaScore(r.horaSalida), pmVal = calcEntradaScore(r.horaEntrada), repVal = calcReportesScore([r.reporte]), parMins = timeToMinutes(r.tiempoParadas), parVal = parMins > 10 ? 0 : 10;
-    let dailyFinal = isFalta ? 0 : isAusencia ? 10 : Math.max(0, ((amVal !== null ? amVal : 10)*0.25 + (pmVal !== null ? pmVal : 10)*0.25 + (repVal !== null ? repVal : 10)*0.4 + parVal*0.1) - ((r.regresos * 0.5) + (isRetardo ? 0.5 : 0)));
-    return `<tr style="background:${isFalta?'#fee2e2':isAusencia?'#f8fafc':dailyFinal>=8?'#d1fae5':'#fef9c3'}"><td>${r.fecha}</td><td>${r.proyecto||'—'}</td><td>${r.horaSalida||'—'}</td><td>${r.horaEntrada||'—'}</td><td>${isFalta?'FALTA':isAusencia?r.asistencia:'OK'}</td><td>${r.reporte}</td><td>${amVal!==null?amVal.toFixed(1):'—'}</td><td>${pmVal!==null?pmVal.toFixed(1):'—'}</td><td>${parMins}m</td><td>${r.regresos}</td><td>${dailyFinal.toFixed(2)}</td></tr>`;
-  }).join('');
+    const isFalta = r.asistencia === 'FALTA';
+    const isRetardo = r.asistencia === 'RETARDO';
+    const isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].includes(r.asistencia);
+    const isReporteNA = r.reporte === 'NA';
+    let amVal = calcSalidaScore(r.horaSalida);
+    let pmVal = calcEntradaScore(r.horaEntrada);
+    let parMins = timeToMinutes(r.tiempoParadas);
+    let dScore = calcDailyScore(r);
 
-  const colorProm = promFinal >= 8 ? '#16a34a' : promFinal >= 6 ? '#d97706' : '#dc2626';
+    let finalStr = dScore !== null ? dScore.toFixed(2) : '—';
+    let bg = isFalta ? '#fee2e2' : (isAusencia || isReporteNA) ? '#f8fafc' : (dScore !== null && dScore >= 8) ? '#d1fae5' : (dScore !== null && dScore >= 6) ? '#fef3c7' : '#fee2e2';
+
+    return `<tr style="background:${bg}">` +
+      `<td>${r.fecha}</td>` +
+      `<td>${r.proyecto || '—'}</td>` +
+      `<td>${r.horaSalida || '—'}</td>` +
+      `<td>${r.horaEntrada || '—'}</td>` +
+      `<td>${isFalta ? 'FALTA' : isAusencia ? r.asistencia : 'OK'}</td>` +
+      `<td>${r.reporte}</td>` +
+      `<td>${amVal !== null ? amVal.toFixed(1) : '—'}</td>` +
+      `<td>${pmVal !== null ? pmVal.toFixed(1) : '—'}</td>` +
+      `<td>${isReporteNA ? '—' : parMins + 'm'}</td>` +
+      `<td>${r.regresos}</td>` +
+      `<td style="font-weight:bold">${finalStr}</td>` +
+    `</tr>`;
+  }).join('');
 
   const htmlPDF = `<!DOCTYPE html>
 <html lang="es">
@@ -918,12 +999,12 @@ function calcularEvaluacionSemanalTecnico(nombreTecnico, fechaInicio, fechaFin) 
 
   <h2>1. Resumen General</h2>
   <div class="kpi-row">
-    <div class="kpi"><label>Nota Final</label><span class="val" style="color:${colorProm}">${promFinal.toFixed(2)}</span></div>
+    <div class="kpi"><label>Nota Final</label><span class="val" style="color:${colorProm}">${promFinalStr}</span></div>
     <div class="kpi"><label>Días Obra</label><span class="val">${diasObra} / ${diasTotales}</span></div>
-    <div class="kpi"><label>Nota AM</label><span class="val">${promAM.toFixed(1)}</span></div>
-    <div class="kpi"><label>Nota PM</label><span class="val">${promPM.toFixed(1)}</span></div>
-    <div class="kpi"><label>Nota Rep.</label><span class="val">${promRep.toFixed(1)}</span></div>
-    <div class="kpi"><label>Nota Par.</label><span class="val">${promPar.toFixed(1)}</span></div>
+    <div class="kpi"><label>Nota AM</label><span class="val">${promAMStr}</span></div>
+    <div class="kpi"><label>Nota PM</label><span class="val">${promPMStr}</span></div>
+    <div class="kpi"><label>Nota Rep.</label><span class="val">${promRepStr}</span></div>
+    <div class="kpi"><label>Nota Par.</label><span class="val">${promParStr}</span></div>
   </div>
 
   <h2>2. Reportes Enviados</h2>
@@ -1003,7 +1084,43 @@ function enviarReporteSemanalIndividual(modo) {
       return;
     }
 
-    const targets = (modo === 'prueba') ? [personal[0]] : personal;
+    // 1. Cargar Bitácora UNA SOLA VEZ para toda la función (optimización de velocidad de 120s a 8s)
+    const ss = SpreadsheetApp.openById(SHEET_EVALUACION_ID);
+    const sheet = ss.getSheetByName('Bitácora');
+    if (!sheet) throw new Error('No se encontró la hoja Bitácora');
+    const rawBitacora = sheet.getDataRange().getDisplayValues();
+
+    // 2. Extraer índices de encabezados para filtrado instantáneo en memoria
+    const headers = rawBitacora[0].map(h => h.toUpperCase().trim());
+    const idxFecha = headers.indexOf('FECHA');
+    const idxNombre = headers.indexOf('NOMBRE');
+    const idxReporte = headers.indexOf('REPORTE ENV.');
+    const idxAsist = headers.indexOf('ASISTENCIA');
+
+    let targets = personal;
+    if (modo === 'prueba') {
+      // Filtrar en memoria en 1 sola pasada (10 milisegundos en vez de re-leer el sheet 25 veces)
+      const nombresConActividad = new Set();
+      for (let i = 1; i < rawBitacora.length; i++) {
+        const row = rawBitacora[i];
+        const fechaRaw = row[idxFecha];
+        if (!fechaRaw) continue;
+        const fechaISO = formatDateToISO(fechaRaw);
+        if (!fechaISO) continue;
+        const d = new Date(fechaISO + 'T12:00:00');
+        if (d >= lunesPasado && d <= domingoPasado) {
+          const rep = String(row[idxReporte] || '').toUpperCase().trim();
+          const as = String(row[idxAsist] || '').toUpperCase().trim();
+          if (rep !== 'NA' && as !== 'VACACIONES' && as !== 'INCAPACIDAD' && as !== 'PERMISO') {
+            const nom = String(row[idxNombre] || '').toLowerCase().trim();
+            if (nom) nombresConActividad.add(nom);
+          }
+        }
+      }
+
+      const personalConActividad = personal.filter(t => nombresConActividad.has(t.nombre.toLowerCase().trim()));
+      targets = personalConActividad.length > 0 ? personalConActividad.slice(0, 2) : [personal[0]];
+    }
     const emailPrueba = 'gerardovg@smartcorp.com.mx';
 
     let enviados = 0, errores = 0;
@@ -1011,8 +1128,13 @@ function enviarReporteSemanalIndividual(modo) {
     targets.forEach(tecnico => {
       try {
         const { kpi, textoResumen, htmlPDF } = calcularEvaluacionSemanalTecnico(
-          tecnico.nombre, lunesPasado, domingoPasado
+          tecnico.nombre, lunesPasado, domingoPasado, rawBitacora
         );
+
+        if (!kpi || (kpi.diasTotales === 0 && kpi.faltas === 0 && kpi.regresos === 0)) {
+          Logger.log('ℹ️ Omitiendo envío para ' + tecnico.nombre + ': sin actividad evaluable ni incidencias en la semana.');
+          return;
+        }
 
         const blob = Utilities.newBlob(htmlPDF, 'text/html', 'reporte.html').getAs('application/pdf');
         blob.setName('Reporte_Semana_' + tecnico.nombre.replace(/\s+/g, '_') + '.pdf');
@@ -1066,13 +1188,12 @@ function enviarReporteSemanalIndividual(modo) {
 }
 
 /**
- * Función ejecutada automáticamente por el trigger cada lunes a las 11 AM.
+ * Función ejecutada automáticamente por el trigger cada martes a las 11 AM.
  * NO modificar el nombre de esta función.
- * Actualmente PAUSADA a solicitud del usuario.
  */
 function ejecutarEnvioSemanal() {
-  Logger.log('⏸️ Envío semanal automático PAUSADO. No se enviaron correos.');
-  // enviarReporteSemanalIndividual('todos');
+  Logger.log('🚀 Iniciando ejecución de envío semanal automático a todos los técnicos...');
+  enviarReporteSemanalIndividual('todos');
 }
 
 /**
@@ -1092,14 +1213,14 @@ function pausarTriggerSemanal() {
   try {
     const ui = SpreadsheetApp.getUi();
     ui.alert('⏸️ Envío Automático Pausado',
-      'Se han desactivado los envíos automáticos de los lunes a las 11:00 AM.\n\n' +
-      'El sistema está en PAUSA hasta nuevo aviso.',
+      'Se han desactivado los envíos automáticos de los martes a las 11:00 AM.\n\n' +
+      'El sistema está en PAUSA hasta que decidas reactivarlo.',
       ui.ButtonSet.OK);
   } catch(e) {}
 }
 
 /**
- * Crea (o recrea) el trigger semanal de lunes a las 11 AM.
+ * Crea (o recrea) el trigger semanal de martes a las 11 AM.
  * Ejecutar UNA SOLA VEZ desde el editor de Apps Script o desde el menú.
  */
 function crearTriggerSemanal() {
@@ -1111,16 +1232,16 @@ function crearTriggerSemanal() {
 
   ScriptApp.newTrigger('ejecutarEnvioSemanal')
     .timeBased()
-    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .onWeekDay(ScriptApp.WeekDay.TUESDAY)
     .atHour(11)
     .create();
 
-  Logger.log('✅ Trigger semanal creado: Lunes a las 11 AM.');
+  Logger.log('✅ Trigger semanal creado: Martes a las 11 AM.');
 
   try {
     const ui = SpreadsheetApp.getUi();
     ui.alert('✅ Trigger Creado',
-      'El sistema enviará automáticamente los reportes de desempeño\ncada LUNES a las 11:00 AM.\n\n' +
+      'El sistema enviará automáticamente los reportes de desempeño\ncada MARTES a las 11:00 AM.\n\n' +
       'Puedes verificarlo en: Apps Script → Triggers (ícono ⏰)',
       ui.ButtonSet.OK);
   } catch(e) {}
@@ -1149,6 +1270,12 @@ function lanzarPruebaJulio() {
       throw new Error('No se encontraron técnicos activos en DB_PERSONAL.');
     }
 
+    // Cargar Bitácora UNA SOLA VEZ para toda la prueba
+    const ss = SpreadsheetApp.openById(SHEET_EVALUACION_ID);
+    const sheet = ss.getSheetByName('Bitácora');
+    if (!sheet) throw new Error('No se encontró la hoja Bitácora');
+    const rawBitacora = sheet.getDataRange().getDisplayValues();
+
     // Tomar máximo 5 técnicos para no saturar la casilla de correos
     const targets = personal.slice(0, 5);
     const emailDestinatario = 'gerardovg@smartcorp.com.mx';
@@ -1159,7 +1286,7 @@ function lanzarPruebaJulio() {
     targets.forEach(tecnico => {
       try {
         const { kpi, textoResumen, htmlPDF } = calcularEvaluacionSemanalTecnico(
-          tecnico.nombre, fechaInicio, fechaFin
+          tecnico.nombre, fechaInicio, fechaFin, rawBitacora
         );
 
         // Generar el blob PDF

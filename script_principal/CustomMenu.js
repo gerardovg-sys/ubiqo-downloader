@@ -23,10 +23,7 @@ function onOpen() {
     ui.createMenu('📊 Sistema Gestión')
         .addItem('Abrir Tablero (Pantalla Completa)', 'abrirTablero')
         .addSeparator()
-        .addItem('📧 Enviar Reporte Semanal (PRUEBA → gerardovg)', 'lanzarReportePrueba')
-        .addItem('🔬 Enviar Prueba (5 Técnicos, 6-12 Jul)', 'lanzarPruebaJulio')
-        .addItem('🐛 Debug: Volcar Datos 6-12 Jul', 'dumpJulyData')
-        .addItem('⏰ Activar Envío Automático (Lunes 11 AM)', 'crearTriggerSemanal')
+        .addItem('⏰ Activar Envío Automático (Martes 11 AM)', 'crearTriggerSemanal')
         .addItem('⏸️ Pausar Envío Automático', 'pausarTriggerSemanal')
         .addToUi();
   } catch (e) {

@@ -394,7 +394,7 @@
       };
       const calcReportes = (reps) => {
         let val=0, sum=0;
-        reps.forEach(r=>{if(!r||r==='NA')return; val++; const t=r.toUpperCase().trim(); if(t==='SI')sum+=1; else if(['FT','FF'].includes(t))sum+=0.5;});
+        reps.forEach(r=>{if(!r||r==='NA')return; val++; const t=r.toUpperCase().trim(); if(t==='SI')sum+=1; else if(['FT','FF','FT FF'].includes(t))sum+=0.5;});
         return val===0?10:sum*(10/val);
       };
 
@@ -441,13 +441,11 @@
       };
 
       // --- COMPONENTE: MULTI-SELECT AGRUPADO ---
-      const MultiSelectGrouped = ({ allTechsInLogs, activeList, selected, onChange }) => {
+      const MultiSelectGrouped = ({ allTechsInLogs, selected, onChange }) => {
         const [isOpen, setIsOpen] = useState(false);
         const ref = useRef(null);
 
-        const activeTechNames = activeList.filter(t => t.estado === 'ACTIVO').map(t => t.nombre);
-        const groupActive = allTechsInLogs.filter(t => activeTechNames.includes(t));
-        const groupInactive = allTechsInLogs.filter(t => !activeTechNames.includes(t));
+        const techList = allTechsInLogs.filter(t => t !== 'Todos');
 
         useEffect(() => {
           const handleClickOutside = (event) => { if (ref.current && !ref.current.contains(event.target)) setIsOpen(false); };
@@ -476,28 +474,16 @@
             </button>
             {isOpen && (
               <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-60 overflow-y-auto custom-scrollbar">
-                <div className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm border-b border-slate-100 ${selected.includes('Todos') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption('Todos')}>
-                  <input type="checkbox" checked={selected.includes('Todos')} readOnly className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" /> <span className="font-bold">Todos</span>
+                <div className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm border-b border-slate-100 ${selected.includes('Todos') ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600'}`} onClick={() => toggleOption('Todos')}>
+                  <input type="checkbox" checked={selected.includes('Todos')} readOnly className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer" /> <span>Todos los técnicos</span>
                 </div>
-                {groupActive.length > 0 && (
-                  <React.Fragment>
-                    <div className="px-3 py-1 bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0">Activos</div>
-                    {groupActive.map(op => (
-                      <div key={op} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm pl-4 ${selected.includes(op) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption(op)}>
-                        <input type="checkbox" checked={selected.includes(op)} readOnly className="rounded text-indigo-600" /> <span className="truncate">{op}</span>
-                      </div>
-                    ))}
-                  </React.Fragment>
-                )}
-                {groupInactive.length > 0 && (
-                  <React.Fragment>
-                    <div className="px-3 py-1 bg-slate-100 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0 border-t border-slate-200">Historial / Otros</div>
-                    {groupInactive.map(op => (
-                      <div key={op} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm pl-4 ${selected.includes(op) ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600'}`} onClick={() => toggleOption(op)}>
-                         <input type="checkbox" checked={selected.includes(op)} readOnly className="rounded text-indigo-600" /> <span className="truncate">{op}</span>
-                      </div>
-                    ))}
-                  </React.Fragment>
+                {techList.map(op => (
+                  <div key={op} className={`px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-sm ${selected.includes(op) ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-slate-600'}`} onClick={() => toggleOption(op)}>
+                    <input type="checkbox" checked={selected.includes(op)} readOnly className="rounded text-indigo-600" /> <span className="truncate">{op}</span>
+                  </div>
+                ))}
+                {techList.length === 0 && (
+                  <div className="px-3 py-3 text-xs text-slate-400 text-center italic">Sin técnicos en este periodo</div>
                 )}
               </div>
             )}
@@ -576,7 +562,7 @@
         let summaryText = "";
 
         if (type === 'evaluacion') {
-           const { kpi, siteStats, avgs, processed, reports, filters } = data;
+           const { kpi, siteStats, avgs, processed, evaluables, reports, filters, isMultiMonth, globalMonthBreakdown } = data;
            const techCount = processed ? processed.length : 0;
            const totalIncidencias = processed ? processed.reduce((acc, curr) => acc + (curr.ret || 0) + (curr.fal || 0) + (curr.reg || 0), 0) : 0;
            
@@ -591,11 +577,84 @@
              reportesText += "   - Sin reportes registrados\n";
            }
 
+           const isSingleTech = Boolean(filters?.tech && filters?.tech.length === 1 && !filters.tech.includes('Todos'));
+           const singleTech = isSingleTech ? (processed || []).find(t => t.nombre === filters.tech[0]) : null;
+           const singleTechMb = singleTech && singleTech.monthBreakdown ? singleTech.monthBreakdown : [];
+
+           let evolucionMensualText = "";
+           if (isMultiMonth) {
+             if (isSingleTech && singleTechMb.length > 0) {
+               evolucionMensualText = `\n2. HISTÓRICO Y EVOLUCIÓN MENSUAL (${singleTech.nombre})\n`;
+               evolucionMensualText += "========================================\n";
+               singleTechMb.forEach(m => {
+                 const sSal = m.scSal !== null ? m.scSal.toFixed(1) : '—';
+                 const sEnt = m.scEnt !== null ? m.scEnt.toFixed(1) : '—';
+                 const sRep = m.scRep !== null ? m.scRep.toFixed(1) : '—';
+                 const sPar = m.scPar !== null ? m.scPar.toFixed(1) : '—';
+                 const finalVal = m.final !== null ? m.final.toFixed(2) : 'N/A';
+                 evolucionMensualText += `• ${m.mesLabel}:\n`;
+                 evolucionMensualText += `   - Calificación Mes: ${finalVal} / 10\n`;
+                 evolucionMensualText += `   - Días Laborados en Obra: ${m.dias}\n`;
+                 evolucionMensualText += `   - Puntualidad: Salida AM ${sSal} pts | Entrada PM ${sEnt} pts\n`;
+                 evolucionMensualText += `   - Reportes: ${sRep} pts | Paradas: ${sPar} pts\n`;
+                 evolucionMensualText += `   - Incidencias: ${m.fal || 0} Faltas, ${m.ret || 0} Retardos, ${m.reg || 0} Regresos\n\n`;
+               });
+               evolucionMensualText += `• PROMEDIO GENERAL DEL PERIODO: ${singleTech.final !== null ? singleTech.final.toFixed(2) : 'N/A'} / 10\n`;
+             } else if (globalMonthBreakdown && globalMonthBreakdown.length > 0) {
+               evolucionMensualText = `\n2. HISTÓRICO Y EVOLUCIÓN MENSUAL DEL EQUIPO\n`;
+               evolucionMensualText += "========================================\n";
+               globalMonthBreakdown.forEach(m => {
+                 const sSal = m.scSal !== null ? m.scSal.toFixed(1) : '—';
+                 const sEnt = m.scEnt !== null ? m.scEnt.toFixed(1) : '—';
+                 const sRep = m.scRep !== null ? m.scRep.toFixed(1) : '—';
+                 const sPar = m.scPar !== null ? m.scPar.toFixed(1) : '—';
+                 const finalVal = m.final !== null ? m.final.toFixed(2) : 'N/A';
+                 evolucionMensualText += `• ${m.mesLabel}:\n`;
+                 evolucionMensualText += `   - Calificación Promedio: ${finalVal} / 10\n`;
+                 evolucionMensualText += `   - Técnicos Evaluados: ${m.techCount} | Días Obra Totales: ${m.dias}\n`;
+                 evolucionMensualText += `   - Puntualidad Promedio: Salida AM ${sSal} pts | Entrada PM ${sEnt} pts\n`;
+                 evolucionMensualText += `   - Reportes Promedio: ${sRep} pts | Paradas: ${sPar} pts\n`;
+                 evolucionMensualText += `   - Incidencias del Mes: ${m.fal || 0} Faltas, ${m.ret || 0} Retardos, ${m.reg || 0} Regresos\n\n`;
+               });
+               evolucionMensualText += `• PROMEDIO GENERAL DEL EQUIPO (PERIODO COMPLETO): ${kpi?.scoreProj !== undefined ? kpi.scoreProj.toFixed(2) : 'N/A'} / 10\n\n`;
+
+               evolucionMensualText += `TABLA COMPARATIVA MENSUAL:\n`;
+               evolucionMensualText += `${pad("MES", 16)} | ${pad("TÉCS", 4)} | ${pad("DÍAS", 5)} | ${pad("SAL AM", 6)} | ${pad("ENT PM", 6)} | ${pad("REP", 4)} | ${pad("PAR", 4)} | ${pad("FAL", 3)} | ${pad("RET", 3)} | ${pad("REG", 3)} | ${pad("CALIF", 5)}\n`;
+               evolucionMensualText += "-".repeat(85) + "\n";
+               globalMonthBreakdown.forEach(m => {
+                 const sSal = m.scSal !== null ? m.scSal.toFixed(1) : '—';
+                 const sEnt = m.scEnt !== null ? m.scEnt.toFixed(1) : '—';
+                 const sRep = m.scRep !== null ? m.scRep.toFixed(1) : '—';
+                 const sPar = m.scPar !== null ? m.scPar.toFixed(1) : '—';
+                 const finalVal = m.final !== null ? m.final.toFixed(2) : 'N/A';
+                 evolucionMensualText += `${pad(m.mesLabel, 16)} | ${pad(m.techCount, 4)} | ${pad(m.dias, 5)} | ${pad(sSal, 6)} | ${pad(sEnt, 6)} | ${pad(sRep, 4)} | ${pad(sPar, 4)} | ${pad(m.fal||0, 3)} | ${pad(m.ret||0, 3)} | ${pad(m.reg||0, 3)} | ${pad(finalVal, 5)}\n`;
+               });
+               evolucionMensualText += "-".repeat(85) + "\n";
+               const avgSalM = (globalMonthBreakdown.reduce((s, x) => s + (x.scSal || 0), 0) / globalMonthBreakdown.length).toFixed(1);
+               const avgEntM = (globalMonthBreakdown.reduce((s, x) => s + (x.scEnt || 0), 0) / globalMonthBreakdown.length).toFixed(1);
+               const avgRepM = (globalMonthBreakdown.reduce((s, x) => s + (x.scRep || 0), 0) / globalMonthBreakdown.length).toFixed(1);
+               const avgParM = (globalMonthBreakdown.reduce((s, x) => s + (x.scPar || 0), 0) / globalMonthBreakdown.length).toFixed(1);
+               const totDiasM = globalMonthBreakdown.reduce((s, x) => s + x.dias, 0);
+               const totFalM = globalMonthBreakdown.reduce((s, x) => s + x.fal, 0);
+               const totRetM = globalMonthBreakdown.reduce((s, x) => s + x.ret, 0);
+               const totRegM = globalMonthBreakdown.reduce((s, x) => s + x.reg, 0);
+               const totTechM = evaluables ? evaluables.length : techCount;
+               const finalPromM = kpi?.scoreProj !== undefined ? kpi.scoreProj.toFixed(2) : 'N/A';
+               evolucionMensualText += `${pad("PROMEDIO GENERAL", 16)} | ${pad(totTechM, 4)} | ${pad(totDiasM, 5)} | ${pad(avgSalM, 6)} | ${pad(avgEntM, 6)} | ${pad(avgRepM, 4)} | ${pad(avgParM, 4)} | ${pad(totFalM, 3)} | ${pad(totRetM, 3)} | ${pad(totRegM, 3)} | ${pad(finalPromM, 5)}\n`;
+               evolucionMensualText += "-".repeat(85) + "\n";
+             }
+           }
+
            let detailedTableText = `${pad("NOMBRE", 22)} | ${pad("SALIDA", 6)} | ${pad("ENTRADA", 7)} | ${pad("REPS", 5)} | ${pad("PAR", 3)} | ${pad("REG", 3)} | ${pad("RET", 3)} | ${pad("FAL", 3)} | ${pad("FINAL", 5)}\n`;
            detailedTableText += "-".repeat(85) + "\n";
            if(processed) {
              processed.forEach(p => { 
-               detailedTableText += `${pad(p.nombre, 22)} | ${pad(p.sSal.toFixed(1), 6)} | ${pad(p.sEnt.toFixed(1), 7)} | ${pad(p.sRep.toFixed(1), 5)} | ${pad(p.sPar, 3)} | ${pad(p.reg, 3)} | ${pad(p.ret, 3)} | ${pad(p.fal, 3)} | ${pad(p.final.toFixed(2), 5)}\n`; 
+               const sSalTxt = p.sSal !== null && p.sSal !== undefined ? p.sSal.toFixed(1) : '—';
+               const sEntTxt = p.sEnt !== null && p.sEnt !== undefined ? p.sEnt.toFixed(1) : '—';
+               const sRepTxt = p.sRep !== null && p.sRep !== undefined ? p.sRep.toFixed(1) : '—';
+               const sParTxt = p.sPar !== null && p.sPar !== undefined ? (typeof p.sPar === 'number' ? p.sPar.toFixed(1) : p.sPar) : '—';
+               const finalTxt = p.final !== null && p.final !== undefined ? p.final.toFixed(2) : 'N/A';
+               detailedTableText += `${pad(p.nombre, 22)} | ${pad(sSalTxt, 6)} | ${pad(sEntTxt, 7)} | ${pad(sRepTxt, 5)} | ${pad(sParTxt, 3)} | ${pad(p.reg, 3)} | ${pad(p.ret, 3)} | ${pad(p.fal, 3)} | ${pad(finalTxt, 5)}\n`; 
              });
            }
 
@@ -609,21 +668,21 @@ TÉCNICOS EVALUADOS: ${techCount}
    - Calificación Promedio Global: ${kpi?.scoreProj.toFixed(2)} / 10
    - Mejor Desempeño: ${kpi?.top ? kpi.top.nombre : 'N/A'} (${kpi?.top ? kpi.top.final.toFixed(2) : 0})
    - Promedio Calificación Reportes: ${kpi?.avgRep ? kpi.avgRep.toFixed(2) : 0}
-
-2. DESGLOSE DE REPORTES ENVIADOS
+${evolucionMensualText}
+${isMultiMonth ? '3' : '2'}. DESGLOSE DE REPORTES ENVIADOS
 ${reportesText}
-3. PUNTUALIDAD Y TIEMPOS
+${isMultiMonth ? '4' : '3'}. PUNTUALIDAD Y TIEMPOS
    - Promedio Hora Salida (AM): ${decimalToTimeStr(avgs?.avgAM)}
    - Promedio Hora Entrada (PM): ${decimalToTimeStr(avgs?.avgPM)}
    - Tiempo Promedio en Sitio: ${siteStats?.sitio} hrs
    - Hora Llegada Sitio Promedio: ${siteStats?.lleg}
    - Hora Salida Sitio Promedio: ${siteStats?.sal}
 
-4. INCIDENCIAS OPERATIVAS
+${isMultiMonth ? '5' : '4'}. INCIDENCIAS OPERATIVAS
    - Total de Incidencias en Periodo: ${totalIncidencias}
      (Incluye retardos, faltas y regresos)
 
-5. DETALLE POR TÉCNICO (TABLA COMPLETA)
+${isMultiMonth ? '6' : '5'}. DETALLE POR TÉCNICO (TABLA COMPLETA)
 ${"-".repeat(85)}
 ${detailedTableText}
 ${"-".repeat(85)}
@@ -762,6 +821,7 @@ Generado automáticamente por Sistema Integral`;
         const [hasGeneratedEval, setHasGeneratedEval] = useState(false);
         const [inputsEval, setInputsEval] = useState({ start: '', end: '', tech: ['Todos'], proj: 'Todos' });
         const [filtersEval, setFiltersEval] = useState({ start: '', end: '', tech: ['Todos'], proj: 'Todos' });
+        const [expandedTech, setExpandedTech] = useState(null);
         
         // ESTADOS REPORTES
         const [dataRepo, setDataRepo] = useState([]);
@@ -873,7 +933,36 @@ Generado automáticamente por Sistema Integral`;
           }
         }, [activeTab]);
 
-        const uniqueTechs = useMemo(() => ['Todos', ...new Set(dataEval.map(d=>d.nombre))].sort(), [dataEval]);
+        const uniqueTechs = useMemo(() => {
+          if (!dataEval || dataEval.length === 0) return ['Todos'];
+          const start = inputsEval.start;
+          const end = inputsEval.end;
+          
+          let filtered = dataEval;
+          if (start || end) {
+            filtered = dataEval.filter(d => {
+              if (start && d.fecha < start) return false;
+              if (end && d.fecha > end) return false;
+              if (!d.nombre || d.nombre.toUpperCase().includes('PMI')) return false;
+              return true;
+            });
+          }
+          
+          const names = [...new Set(filtered.map(d => d.nombre))].filter(Boolean).sort();
+          return ['Todos', ...names];
+        }, [dataEval, inputsEval.start, inputsEval.end]);
+
+        useEffect(() => {
+          if (inputsEval.tech.length > 0 && !inputsEval.tech.includes('Todos')) {
+            const valid = inputsEval.tech.filter(t => uniqueTechs.includes(t));
+            if (valid.length === 0) {
+              setInputsEval(prev => ({ ...prev, tech: ['Todos'] }));
+            } else if (valid.length !== inputsEval.tech.length) {
+              setInputsEval(prev => ({ ...prev, tech: valid }));
+            }
+          }
+        }, [uniqueTechs]);
+
         const uniqueProjectsEval = useMemo(() => ['Todos', ...new Set(dataEval.map(d=>d.proyecto))].sort(), [dataEval]);
         const uniqueProjectsRepo = useMemo(() => {
           if (dataMaestro.length > 0) {
@@ -934,46 +1023,202 @@ Generado automáticamente por Sistema Integral`;
              if(repCounts[rt] !== undefined) repCounts[rt]++; 
              else if(rt === 'FT FF') repCounts['FT FF']++;
 
-             if(!groups[r.nombre]) groups[r.nombre]={re:[], sal:0, salC:0, ent:0, entC:0, reps:[], par:0, reg:0, ret:0, fal:0, hS:0, hE:0, hC:0};
-             const g=groups[r.nombre]; g.re.push(r);
-             
-             const sS=calcSalida(r.horaSalida); if(sS!==null){g.sal+=sS;g.salC++}
-             const sE=calcEntrada(r.horaEntrada); if(sE!==null){g.ent+=sE;g.entC++}
-             
-             g.reps.push(r.reporteEnv);
-             if(!['VACACIONES','PERMISO','INCAPACIDAD'].some(x=>(r.nota||'').toUpperCase().includes(x))) g.par+=(Number(r.tiempoParadas)||0);
-             g.reg+=(Number(r.regresos)||0);
-             const as=(r.asistencia||'').toUpperCase(); if(as==='RETARDO')g.ret++; if(as==='FALTA')g.fal++;
-             if(r.horaSalProy && r.horaLlegProy && r.horaSalProy!=='00:00' && r.horaLlegProy!=='00:00') { g.hS+=timeToMinutes(r.horaLlegProy); g.hE+=timeToMinutes(r.horaSalProy); g.hC++; }
+             if(!groups[r.nombre]) groups[r.nombre] = { re: [] };
+             groups[r.nombre].re.push(r);
           });
 
-          const res = Object.keys(groups).map(n=>{
-            const g=groups[n];
-            const c = g.re.length;
-            const scSal=g.salC>0?g.sal/g.salC:10; 
-            const scEnt=g.entC>0?g.ent/g.entC:10;
-            const scRep=calcReportes(g.reps); const scPar=g.par>10?0:10;
-            const pen=(g.reg*0.5)+(g.ret*0.5)+(g.fal*1.0);
-            const safe=(v)=>isNaN(v)?0:v;
-            const final=Math.max(0,(safe(scSal)*0.25 + safe(scEnt)*0.25 + safe(scRep)*0.4 + safe(scPar)*0.1)-pen);
-            const avS=g.hC?g.hS/g.hC:0; const avE=g.hC?g.hE/g.hC:0; const dur=avE>avS?avE-avS:0;
-            // Se pasa registros: c para no romper la variable que se usaba
-            return {nombre:n, registros:c, sSal:scSal, sEnt:scEnt, sRep:scRep, sPar:scPar, reg:g.reg, ret:g.ret, fal:g.fal, final, tLleg:minutesToTime(avS), tSal:minutesToTime(avE), tSitio:dur>0?minutesToTime(dur):'--:--'};
-          }).sort((a,b)=>b.final-a.final);
+          // Determinar si el periodo abarca más de un mes calendario
+          const startMonth = filtersEval.start ? filtersEval.start.substring(0, 7) : '';
+          const endMonth = filtersEval.end ? filtersEval.end.substring(0, 7) : '';
+          const isMultiMonth = Boolean(startMonth && endMonth && startMonth !== endMonth);
 
-          // LOGICA DE JUSTICIA
-          // Tomar el que tiene mayor número de asistencias
-          const maxRegistros = res.length > 0 ? Math.max(...res.map(t => t.registros)) : 0;
-          // Si el proyecto duró menos de 4 días, entran todos. Si duró más, exigimos un mínimo de 25% del líder.
+          // Función auxiliar para calcular las métricas de un conjunto de filas
+          const calcMetricsForRows = (rows) => {
+            let salTotal = 0, entTotal = 0, parScoreTotal = 0, diasEval = 0;
+            let reps = [];
+            let reg = 0, ret = 0, fal = 0;
+            let hS = 0, hE = 0, hC = 0;
+
+            rows.forEach(r => {
+              const as = (r.asistencia || '').toUpperCase().trim();
+              const isFalta = as === 'FALTA';
+              const isAusencia = ['VACACIONES', 'PERMISO', 'INCAPACIDAD'].some(x => as.includes(x) || (r.nota || '').toUpperCase().includes(x));
+              const isReporteNA = !r.reporteEnv || r.reporteEnv.toUpperCase().trim() === 'NA';
+
+              if (isFalta) {
+                fal++;
+                return;
+              }
+              if (isAusencia) {
+                // Caso especial ausentismo justificado: no penaliza ni entra en promedios
+                return;
+              }
+              if (as === 'RETARDO') ret++;
+              reg += (Number(r.regresos) || 0);
+
+              // Si no es proyecto especial (no es NA) ni ausencia, se evalúan paradas, puntualidad y reporte
+              if (!isReporteNA) {
+                diasEval++;
+                const pMin = timeToMinutes(r.tiempoParadas);
+                parScoreTotal += (pMin > 10 ? 0 : 10);
+
+                const sS = calcSalida(r.horaSalida);
+                salTotal += (sS !== null ? sS : 10);
+
+                const sE = calcEntrada(r.horaEntrada);
+                entTotal += (sE !== null ? sE : 10);
+
+                reps.push(r.reporteEnv);
+              }
+
+              if (r.horaSalProy && r.horaLlegProy && r.horaSalProy !== '00:00' && r.horaLlegProy !== '00:00') {
+                hS += timeToMinutes(r.horaLlegProy);
+                hE += timeToMinutes(r.horaSalProy);
+                hC++;
+              }
+            });
+
+            if (diasEval === 0) {
+              if (fal > 0) {
+                return { scSal: 0, scEnt: 0, scRep: 0, scPar: 0, reg, ret, fal, final: 0, hS, hE, hC, isSpecialOnly: false };
+              }
+              return { scSal: null, scEnt: null, scRep: null, scPar: null, reg, ret, fal, final: null, hS, hE, hC, isSpecialOnly: true };
+            }
+
+            const scSal = salTotal / diasEval;
+            const scEnt = entTotal / diasEval;
+            const scRep = reps.length > 0 ? calcReportes(reps) : 10;
+            const scPar = parScoreTotal / diasEval;
+            const pen = (reg * 0.5) + (ret * 0.5) + (fal * 1.0);
+            const safe = (v) => isNaN(v) ? 0 : v;
+            const final = Math.max(0, (safe(scSal) * 0.25 + safe(scEnt) * 0.25 + safe(scRep) * 0.4 + safe(scPar) * 0.1) - pen);
+
+            return { scSal, scEnt, scRep, scPar, reg, ret, fal, final, hS, hE, hC, isSpecialOnly: false };
+          };
+
+          const res = Object.keys(groups).map(n => {
+            const g = groups[n];
+            const c = g.re.length;
+
+            let scSal = null, scEnt = null, scRep = null, scPar = null;
+            let reg = 0, ret = 0, fal = 0, final = null;
+            let isSpecialOnly = false;
+            let totalHS = 0, totalHE = 0, totalHC = 0;
+            let monthBreakdown = [];
+
+            if (isMultiMonth) {
+              // Agrupar filas por mes (YYYY-MM)
+              const byMonth = {};
+              g.re.forEach(r => {
+                const m = r.fecha ? r.fecha.substring(0, 7) : 'general';
+                if (!byMonth[m]) byMonth[m] = [];
+                byMonth[m].push(r);
+              });
+
+              const monthNamesES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+              const monthKeys = Object.keys(byMonth).sort();
+              monthBreakdown = monthKeys.map(m => {
+                const mRes = calcMetricsForRows(byMonth[m]);
+                const parts = m.split('-');
+                let label = m;
+                if (parts.length === 2) {
+                  const mIdx = parseInt(parts[1], 10) - 1;
+                  label = (monthNamesES[mIdx] || m) + ' ' + parts[0];
+                }
+                return {
+                  mes: m,
+                  mesLabel: label,
+                  dias: byMonth[m].length,
+                  ...mRes
+                };
+              });
+
+              const validMonths = monthBreakdown.filter(m => m.final !== null && !m.isSpecialOnly);
+
+              if (validMonths.length > 0) {
+                scSal = validMonths.reduce((sum, m) => sum + m.scSal, 0) / validMonths.length;
+                scEnt = validMonths.reduce((sum, m) => sum + m.scEnt, 0) / validMonths.length;
+                scRep = validMonths.reduce((sum, m) => sum + m.scRep, 0) / validMonths.length;
+                scPar = validMonths.reduce((sum, m) => sum + m.scPar, 0) / validMonths.length;
+                final = validMonths.reduce((sum, m) => sum + m.final, 0) / validMonths.length;
+                isSpecialOnly = false;
+              } else {
+                const anyFalta = monthBreakdown.reduce((sum, m) => sum + m.fal, 0);
+                if (anyFalta > 0) {
+                  scSal = 0; scEnt = 0; scRep = 0; scPar = 0; final = 0;
+                  isSpecialOnly = false;
+                } else {
+                  scSal = null; scEnt = null; scRep = null; scPar = null; final = null;
+                  isSpecialOnly = true;
+                }
+              }
+
+              reg = monthBreakdown.reduce((sum, m) => sum + m.reg, 0);
+              ret = monthBreakdown.reduce((sum, m) => sum + m.ret, 0);
+              fal = monthBreakdown.reduce((sum, m) => sum + m.fal, 0);
+              totalHS = monthBreakdown.reduce((sum, m) => sum + m.hS, 0);
+              totalHE = monthBreakdown.reduce((sum, m) => sum + m.hE, 0);
+              totalHC = monthBreakdown.reduce((sum, m) => sum + m.hC, 0);
+            } else {
+              // Periodo dentro de 1 mes (evaluación directa)
+              const mRes = calcMetricsForRows(g.re);
+              scSal = mRes.scSal;
+              scEnt = mRes.scEnt;
+              scRep = mRes.scRep;
+              scPar = mRes.scPar;
+              final = mRes.final;
+              reg = mRes.reg;
+              ret = mRes.ret;
+              fal = mRes.fal;
+              totalHS = mRes.hS;
+              totalHE = mRes.hE;
+              totalHC = mRes.hC;
+              isSpecialOnly = mRes.isSpecialOnly;
+            }
+
+            const avS = totalHC ? totalHS / totalHC : 0;
+            const avE = totalHC ? totalHE / totalHC : 0;
+            const dur = avE > avS ? avE - avS : 0;
+
+            // Guardar para uso de promedios generales de sitio
+            g.hS = totalHS; g.hE = totalHE; g.hC = totalHC;
+
+            return {
+              nombre: n,
+              registros: c,
+              sSal: scSal,
+              sEnt: scEnt,
+              sRep: scRep,
+              sPar: scPar,
+              reg: reg,
+              ret: ret,
+              fal: fal,
+              final: final,
+              isSpecialOnly: isSpecialOnly,
+              monthBreakdown: isMultiMonth ? monthBreakdown : [],
+              tLleg: minutesToTime(avS),
+              tSal: minutesToTime(avE),
+              tSitio: dur > 0 ? minutesToTime(dur) : '--:--'
+            };
+          }).sort((a,b) => {
+            if (a.final === null && b.final === null) return 0;
+            if (a.final === null) return 1;
+            if (b.final === null) return -1;
+            return b.final - a.final;
+          });
+
+          // Solo técnicos evaluables para Top 3, promedio global y ranking
+          const evaluables = res.filter(t => t.final !== null && !t.isSpecialOnly);
+          const maxRegistros = evaluables.length > 0 ? Math.max(...evaluables.map(t => t.registros)) : 0;
           const umbralJusticia = maxRegistros <= 3 ? 1 : Math.ceil(maxRegistros * 0.25);
-          
-          const validCandidates = res.filter(t => t.registros >= umbralJusticia);
-          const top3List = validCandidates.length > 0 ? validCandidates.slice(0,3) : res.slice(0,3);
-          const top = top3List.length > 0 ? top3List[0] : (res.length > 0 ? res[0] : null);
+
+          const validCandidates = evaluables.filter(t => t.registros >= umbralJusticia);
+          const top3List = validCandidates.length > 0 ? validCandidates.slice(0,3) : evaluables.slice(0,3);
+          const top = top3List.length > 0 ? top3List[0] : (evaluables.length > 0 ? evaluables[0] : null);
 
           let am=[], pm=[];
           const isMulti = filtersEval.proj==='Todos' && (filtersEval.tech.includes('Todos')||filtersEval.tech.length>1);
-          
+
           if (isMulti) {
             Object.keys(groups).sort().forEach(n => {
               const g=groups[n];
@@ -989,17 +1234,86 @@ Generado automáticamente por Sistema Integral`;
              });
           }
 
-          const scoreProj = res.length ? res.reduce((a,b)=>a+b.final,0)/res.length : 0;
-          const avgRep = res.length ? res.reduce((a,b)=>a+b.sRep,0)/res.length : 0;
+          const scoreProj = evaluables.length ? evaluables.reduce((a,b)=>a+b.final,0)/evaluables.length : 0;
+          const avgRep = evaluables.length ? evaluables.reduce((a,b)=>(b.sRep !== null ? a+b.sRep : a),0)/evaluables.length : 0;
           const avgAM = am.length ? am.reduce((a,b)=>a+b.val,0)/am.length : 0;
           const avgPM = pm.length ? pm.reduce((a,b)=>a+b.val,0)/pm.length : 0;
-          
+
           let tL=0, tS=0, tD=0, tC=0; Object.values(groups).forEach(g=>{ if(g.hC>0){tL+=g.hS/g.hC; tS+=g.hE/g.hC; const d=(g.hE/g.hC)-(g.hS/g.hC); tD+=(d>0?d:0); tC++;}});
           const siteStats = {lleg:tC?minutesToTime(tL/tC):'--', sal:tC?minutesToTime(tS/tC):'--', sitio:tC?minutesToTime(tD/tC):'--'};
           const repData = ['SI','FT','FF','FT FF','NO','NA'].filter(k=>repCounts[k]>0).map(k=>({name:k, val:repCounts[k]}));
           const getDomain = (d) => {if(!d.length)return['auto','auto']; const v=d.map(x=>x.val); return [Math.min(...v)-0.2, Math.max(...v)+0.2]};
+          let globalMonthBreakdown = [];
+          if (isMultiMonth && res.length > 0) {
+            const allMonths = new Set();
+            res.forEach(t => {
+              (t.monthBreakdown || []).forEach(mb => allMonths.add(mb.mes));
+            });
+            const sortedMonths = Array.from(allMonths).sort();
+            const monthNamesES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-          return { processed: res, top3List, rawFilteredData: filtered, kpi: {scoreProj, top, avgRep}, charts: {am, pm}, reports: repData, avgs: {avgAM, avgPM}, siteStats, domains: {am:getDomain(am), pm:getDomain(pm)}, filters: filtersEval };
+            globalMonthBreakdown = sortedMonths.map(m => {
+              const parts = m.split('-');
+              let label = m;
+              if (parts.length === 2) {
+                const mIdx = parseInt(parts[1], 10) - 1;
+                label = (monthNamesES[mIdx] || m) + ' ' + parts[0];
+              }
+
+              const monthlyTechs = [];
+              res.forEach(t => {
+                const mb = (t.monthBreakdown || []).find(x => x.mes === m);
+                if (mb && mb.final !== null && !mb.isSpecialOnly) {
+                  monthlyTechs.push(mb);
+                }
+              });
+
+              const count = monthlyTechs.length;
+              if (count === 0) {
+                return {
+                  mes: m,
+                  mesLabel: label,
+                  techCount: 0,
+                  dias: 0,
+                  scSal: null,
+                  scEnt: null,
+                  scRep: null,
+                  scPar: null,
+                  fal: 0,
+                  ret: 0,
+                  reg: 0,
+                  final: null
+                };
+              }
+
+              const scSal = monthlyTechs.reduce((s, x) => s + (x.scSal !== null ? x.scSal : 10), 0) / count;
+              const scEnt = monthlyTechs.reduce((s, x) => s + (x.scEnt !== null ? x.scEnt : 10), 0) / count;
+              const scRep = monthlyTechs.reduce((s, x) => s + (x.scRep !== null ? x.scRep : 10), 0) / count;
+              const scPar = monthlyTechs.reduce((s, x) => s + (x.scPar !== null ? x.scPar : 10), 0) / count;
+              const final = monthlyTechs.reduce((s, x) => s + (x.final || 0), 0) / count;
+              const dias = monthlyTechs.reduce((s, x) => s + (x.dias || 0), 0);
+              const fal = monthlyTechs.reduce((s, x) => s + (x.fal || 0), 0);
+              const ret = monthlyTechs.reduce((s, x) => s + (x.ret || 0), 0);
+              const reg = monthlyTechs.reduce((s, x) => s + (x.reg || 0), 0);
+
+              return {
+                mes: m,
+                mesLabel: label,
+                techCount: count,
+                dias,
+                scSal,
+                scEnt,
+                scRep,
+                scPar,
+                fal,
+                ret,
+                reg,
+                final
+              };
+            });
+          }
+
+          return { processed: res, evaluables, top3List, rawFilteredData: filtered, kpi: {scoreProj, top, avgRep}, charts: {am, pm}, reports: repData, avgs: {avgAM, avgPM}, siteStats, domains: {am:getDomain(am), pm:getDomain(pm)}, filters: filtersEval, isMultiMonth, globalMonthBreakdown };
         }, [dataEval, filtersEval, hasGeneratedEval, dataMaestro]);
 
         // --- MEMO MASTER RECORD & DEPT ---
@@ -1462,8 +1776,12 @@ Generado automáticamente por Sistema Integral`;
           'from-pink-400 to-pink-600 shadow-pink-100 text-pink-950'
         ];
         
-        const { processed, top3List, kpi, charts, reports, avgs, siteStats, domains } = processedEval;
+        const { processed, evaluables, top3List, kpi, charts, reports, avgs, siteStats, domains, isMultiMonth, globalMonthBreakdown } = processedEval;
         
+        const isSingleTech = Boolean(filtersEval.tech && filtersEval.tech.length === 1 && !filtersEval.tech.includes('Todos'));
+        const singleTechRecord = isSingleTech ? (processed || []).find(t => t.nombre === filtersEval.tech[0]) : null;
+        const singleTechMonthBreakdown = singleTechRecord && singleTechRecord.monthBreakdown ? singleTechRecord.monthBreakdown : [];
+
         // --- AQUÍ ESTÁ EL AJUSTE DE ALTURA DINÁMICA (MAS ESPACIO PARA NOMBRES) ---
         const dynamicHeightPunt = charts && charts.am ? Math.max(350, charts.am.length * 40) : 350;
         const dynamicHeightRank = processed ? Math.max(300, processed.length * 40) : 300;
@@ -1502,7 +1820,7 @@ Generado automáticamente por Sistema Integral`;
                   <div className="col-span-12 md:col-span-6 grid grid-cols-2 gap-4">
                     <div className="bg-white p-4 rounded-xl border border-slate-200">
                       <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Técnico</label>
-                      <MultiSelectGrouped allTechsInLogs={uniqueTechs} activeList={listActivos} selected={inputsEval.tech} onChange={val => setInputsEval({...inputsEval, tech: val})} />
+                      <MultiSelectGrouped allTechsInLogs={uniqueTechs} selected={inputsEval.tech} onChange={val => setInputsEval({...inputsEval, tech: val})} />
                     </div>
                     <div className="bg-white p-4 rounded-xl border border-slate-200"><label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Proyecto</label><SearchableSelect options={uniqueProjectsEval} value={inputsEval.proj === 'Todos' ? '' : inputsEval.proj} onChange={val => setInputsEval({...inputsEval, proj: val || 'Todos'})} placeholder="Buscar Proyecto..." /></div>
                   </div>
@@ -1582,7 +1900,7 @@ Generado automáticamente por Sistema Integral`;
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 print-row gap-6 mb-6">
-                      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 print-no-shadow print-col-2 rounded-xl p-6 text-white print:text-slate-800 shadow-lg flex justify-between items-center"><div><p className="text-indigo-100 print:text-slate-500 font-medium mb-1">Mejor Desempeño</p><h2 className="text-2xl font-bold">{kpi.top?.nombre||'N/A'}</h2></div><div className="text-right"><span className="text-4xl font-bold">{kpi.top?.final.toFixed(2)||0}</span></div></div>
+                      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 print-no-shadow print-col-2 rounded-xl p-6 text-white print:text-slate-800 shadow-lg flex justify-between items-center"><div><p className="text-indigo-100 print:text-slate-500 font-medium mb-1">Mejor Desempeño</p><h2 className="text-2xl font-bold">{kpi.top?.nombre||'N/A'}</h2></div><div className="text-right"><span className="text-4xl font-bold">{kpi.top && kpi.top.final !== null && kpi.top.final !== undefined ? kpi.top.final.toFixed(2) : '0'}</span></div></div>
                       <div className="bg-gradient-to-r from-blue-500 to-cyan-600 print-no-shadow print-col-2 rounded-xl p-6 text-white print:text-slate-800 shadow-lg flex justify-between items-center"><div><p className="text-blue-100 print:text-slate-500 font-medium mb-1">Promedio General</p><h2 className="text-2xl font-bold">{filtersEval.proj}</h2></div><div className="text-right"><span className="text-4xl font-bold">{kpi.scoreProj.toFixed(2)}</span></div></div>
                     </div>
                     
@@ -1608,18 +1926,119 @@ Generado automáticamente por Sistema Integral`;
                       </div>
                     </div>
                     
-                    {/* RESTO EVAL */}
+                    {/* RESTO EVAL: TOP 3 LÍDERES Y GRÁFICA DE REPORTES AMPLIADA */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 print-row gap-6 mb-6 print-avoid-break">
-                       <div className="bg-white p-5 rounded-2xl border border-slate-200 h-64 print-no-shadow print-col-2 print-chart-fixed"><h3 className="font-bold text-slate-700 mb-2 flex gap-2"><Icons.Award size={18} className="text-yellow-500"/> Top 3 Líderes</h3><div className="h-full pb-6">{top3List && top3List.length > 0 ? <ResponsiveContainer><BarChart data={top3List} layout="vertical" margin={{left:0,right:20}}><XAxis type="number" domain={[0,10]} hide/> <YAxis type="category" dataKey="nombre" width={70} tick={{fontSize:11,fontWeight:'bold'}}/> <Bar dataKey="final" barSize={20} radius={[0,4,4,0]} fill="#F59E0B" isAnimationActive={false}><LabelList dataKey={d=>d.final.toFixed(2)} position="right" fontSize={11} fontWeight="bold"/></Bar></BarChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos</div>}</div></div>
+                       {/* CARD TOP 3 LÍDERES (MÁS ALTO Y CON ESPACIO SUFICIENTE PARA NOMBRES) */}
+                       <div className="bg-white p-5 rounded-2xl border border-slate-200 min-h-[350px] flex flex-col justify-between print-no-shadow print-col-2 print-chart-fixed">
+                         <div>
+                           <div className="flex justify-between items-center mb-3">
+                             <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                               <Icons.Award size={20} className="text-amber-500"/> Top 3 Líderes de Desempeño
+                             </h3>
+                             <span className="text-xs bg-amber-50 text-amber-700 font-bold px-2.5 py-1 rounded-full border border-amber-200">
+                               Podio
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mb-3">Técnicos con mayor calificación ponderada en el periodo seleccionado.</p>
+                         </div>
+                         <div className="h-64 pb-2">
+                           {top3List && top3List.length > 0 ? (
+                             <ResponsiveContainer width="100%" height="100%">
+                               <BarChart data={top3List} layout="vertical" margin={{left: 10, right: 35, top: 10, bottom: 10}}>
+                                 <XAxis type="number" domain={[0, 10]} hide/> 
+                                 <YAxis type="category" dataKey="nombre" width={125} tick={{fontSize: 11, fontWeight: 'bold', fill: '#334155'}} interval={0}/> 
+                                 <Bar dataKey="final" barSize={26} radius={[0, 6, 6, 0]} fill="#F59E0B" isAnimationActive={false}>
+                                   <LabelList dataKey={d => d.final !== null ? d.final.toFixed(2) : ''} position="right" fontSize={11} fontWeight="bold" fill="#B45309"/>
+                                 </Bar>
+                               </BarChart>
+                             </ResponsiveContainer>
+                           ) : (
+                             <div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos evaluables en el periodo</div>
+                           )}
+                         </div>
+                       </div>
                        
-                       <div className="bg-white p-5 rounded-2xl border border-slate-200 h-64 print-no-shadow print-col-2 print-chart-fixed">
-                         <div className="flex justify-between items-center mb-2"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.CheckCircle size={18} className="text-indigo-500"/> Reportes</h3><span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded font-bold">Calif. Prom: {kpi.avgRep ? kpi.avgRep.toFixed(2) : 0}/10</span></div>
-                         <div className="h-full pb-6">{reports && reports.length > 0 ? <ResponsiveContainer><PieChart margin={{top:4,right:4,bottom:4,left:4}}><Pie data={reports} dataKey="val" nameKey="name" cx="50%" cy="45%" outerRadius={80} isAnimationActive={false} labelLine={false}>{reports.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[entry.name]} />))}</Pie><RechartsTooltip formatter={(v,n)=>[v,n]}/> <Legend verticalAlign="bottom" height={28} iconSize={10} wrapperStyle={{fontSize:'11px'}}/></PieChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin reportes</div>}</div>
+                       {/* CARD REPORTES (AMPLIADA, DONUT CHART + DESGLOSE CON CANTIDADES Y PORCENTAJES) */}
+                       <div className="bg-white p-5 rounded-2xl border border-slate-200 min-h-[350px] flex flex-col justify-between print-no-shadow print-col-2 print-chart-fixed">
+                         <div>
+                           <div className="flex justify-between items-center mb-2">
+                             <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                               <Icons.CheckCircle size={20} className="text-indigo-500"/> Distribución de Reportes
+                             </h3>
+                             <span className="text-xs bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-bold border border-indigo-200">
+                               Calif. Prom: {kpi.avgRep ? kpi.avgRep.toFixed(2) : 0}/10
+                             </span>
+                           </div>
+                           <p className="text-xs text-slate-400 mb-2">Proporción de estatus de reportes en las fechas seleccionadas.</p>
+                         </div>
+                         
+                         {reports && reports.length > 0 ? (
+                           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 h-full pb-2">
+                             {/* Gráfica de Dona centrada y amplia */}
+                             <div className="w-full sm:w-1/2 h-56 flex items-center justify-center">
+                               <ResponsiveContainer width="100%" height="100%">
+                                 <PieChart margin={{top: 0, right: 0, bottom: 0, left: 0}}>
+                                   <Pie 
+                                     data={reports} 
+                                     dataKey="val" 
+                                     nameKey="name" 
+                                     cx="50%" 
+                                     cy="50%" 
+                                     outerRadius={78} 
+                                     innerRadius={42} 
+                                     paddingAngle={3}
+                                     isAnimationActive={false}
+                                   >
+                                     {reports.map((entry, index) => (
+                                       <Cell key={`cell-${index}`} fill={COLORS[entry.name] || '#94A3B8'} />
+                                     ))}
+                                   </Pie>
+                                   <RechartsTooltip formatter={(v, n) => [`${v} reportes`, n]} />
+                                 </PieChart>
+                               </ResponsiveContainer>
+                             </div>
+                             
+                             {/* Lista de desglose con cantidades y porcentajes sin cortes */}
+                             <div className="w-full sm:w-1/2 flex flex-col justify-center space-y-2 pr-1">
+                               {reports.map(r => {
+                                 const totalReps = reports.reduce((acc, curr) => acc + curr.val, 0);
+                                 const pct = totalReps > 0 ? Math.round((r.val / totalReps) * 100) : 0;
+                                 const repSubLabels = {
+                                   'SI': 'A tiempo',
+                                   'FT': 'Fuera tiempo',
+                                   'FF': 'Fin semana',
+                                   'FT FF': 'FT y FF',
+                                   'NO': 'Sin reporte',
+                                   'NA': 'No aplica'
+                                 };
+                                 return (
+                                   <div key={r.name} className="flex items-center justify-between text-xs bg-slate-50 hover:bg-slate-100 transition px-3 py-1.5 rounded-xl border border-slate-100">
+                                     <div className="flex items-center gap-2">
+                                       <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[r.name] || '#94A3B8' }}></span>
+                                       <span className="font-bold text-slate-700">{r.name}</span>
+                                       <span className="text-[10px] text-slate-400">({repSubLabels[r.name] || r.name})</span>
+                                     </div>
+                                     <div className="flex items-center gap-1.5">
+                                       <span className="font-extrabold text-slate-800">{r.val}</span>
+                                       <span className="text-[10px] text-slate-400 font-semibold">({pct}%)</span>
+                                     </div>
+                                   </div>
+                                 );
+                               })}
+                               <div className="pt-2 border-t border-slate-100 flex justify-between items-center text-xs font-bold text-slate-500 px-2">
+                                 <span>Total de Reportes:</span>
+                                 <span className="text-slate-800">{reports.reduce((acc, curr) => acc + curr.val, 0)}</span>
+                               </div>
+                             </div>
+                           </div>
+                         ) : (
+                           <div className="h-56 flex justify-center items-center text-xs text-slate-400">Sin reportes registrados en el periodo</div>
+                         )}
                        </div>
                     </div>
                     
                     {/* RANKING */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-avoid-break print-no-shadow"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.TrendingUp size={18} className="text-slate-500"/> Ranking General</h3><span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">Promedio: {kpi.scoreProj.toFixed(2)}</span></div><div style={{ height: dynamicHeightRank }}>{processed && processed.length > 0 ? <ResponsiveContainer><BarChart data={processed} layout="vertical" margin={{left:0,right:20}}><XAxis type="number" domain={[0,10]} hide/> <YAxis type="category" dataKey="nombre" width={90} tick={{fontSize:10}} interval={0}/> <ReferenceLine x={kpi.scoreProj} stroke="red" strokeDasharray="3 3" /> <Bar dataKey="final" barSize={12} radius={[0,4,4,0]} fill="#64748B" isAnimationActive={false}><LabelList dataKey={d=>d.final.toFixed(1)} position="right" fontSize={10}/></Bar></BarChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos</div>}</div></div>
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 mb-6 print-avoid-break print-no-shadow"><div className="flex justify-between items-center mb-4"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.TrendingUp size={18} className="text-slate-500"/> Ranking General</h3><span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded">Promedio: {kpi.scoreProj.toFixed(2)}</span></div><div style={{ height: dynamicHeightRank }}>{evaluables && evaluables.length > 0 ? <ResponsiveContainer><BarChart data={evaluables} layout="vertical" margin={{left:0,right:20}}><XAxis type="number" domain={[0,10]} hide/> <YAxis type="category" dataKey="nombre" width={90} tick={{fontSize:10}} interval={0}/> <ReferenceLine x={kpi.scoreProj} stroke="red" strokeDasharray="3 3" /> <Bar dataKey="final" barSize={12} radius={[0,4,4,0]} fill="#64748B" isAnimationActive={false}><LabelList dataKey={d=>d.final !== null ? d.final.toFixed(1) : ''} position="right" fontSize={10}/></Bar></BarChart></ResponsiveContainer>:<div className="h-full flex justify-center items-center text-xs text-slate-400">Sin datos evaluables</div>}</div></div>
                     
                     {/* PERSONAL Y PARTICIPACIÓN EN EVALUACIÓN */}
                     {filtersEval.proj !== 'Todos' && evalProjectTechStats.length > 0 && (
@@ -1750,8 +2169,320 @@ Generado automáticamente por Sistema Integral`;
                       </div>
                     )}
                     
+                    {/* HISTÓRICO MENSUAL CUANDO SE SELECCIONA UN SOLO TÉCNICO EN MÁS DE 1 MES */}
+                    {isSingleTech && isMultiMonth && singleTechMonthBreakdown.length > 0 && (
+                      <div className="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm mb-8 print-avoid-break">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-4 border-b border-slate-100 pb-4">
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                              <Icons.Calendar className="text-indigo-600" size={20}/>
+                              Histórico y Desglose Mensual: <span className="text-indigo-600">{filtersEval.tech[0]}</span>
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Evolución de calificaciones mes con mes y promedio general del periodo</p>
+                          </div>
+                          <div className="bg-indigo-50 border border-indigo-200 px-4 py-2 rounded-xl flex items-center gap-2">
+                            <span className="text-xs text-indigo-700 font-semibold">Promedio General:</span>
+                            <span className="text-lg font-extrabold text-indigo-700">
+                              {singleTechRecord?.final !== null && singleTechRecord?.final !== undefined ? singleTechRecord.final.toFixed(2) : 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* GRÁFICA DE EVOLUCIÓN MENSUAL */}
+                        <div className="h-48 w-full mb-6 pt-2">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={singleTechMonthBreakdown} margin={{top: 15, right: 30, left: -20, bottom: 0}}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="mesLabel" tick={{fontSize: 11, fontWeight: 'bold'}} />
+                              <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{fontSize: 10}} />
+                              <RechartsTooltip formatter={(v) => [v !== null ? Number(v).toFixed(2) : 'N/A', 'Calificación']} />
+                              <ReferenceLine y={singleTechRecord?.final || 0} stroke="#6366F1" strokeDasharray="3 3" />
+                              <Bar dataKey="final" barSize={36} radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                                {singleTechMonthBreakdown.map((entry, index) => (
+                                  <Cell key={`bar-${index}`} fill={entry.final === null ? '#94A3B8' : entry.final >= 8 ? '#10B981' : entry.final >= 6 ? '#F59E0B' : '#EF4444'} />
+                                ))}
+                                <LabelList dataKey={d => d.final !== null ? d.final.toFixed(2) : 'N/A'} position="top" fontSize={11} fontWeight="bold" />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* TABLA DE DESGLOSE MES A MES */}
+                        <div className="overflow-x-auto rounded-xl border border-slate-100">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 uppercase text-slate-500 font-bold border-b border-slate-100">
+                              <tr>
+                                <th className="px-4 py-2.5">Mes</th>
+                                <th className="px-2 py-2.5 text-center">Días Obra</th>
+                                <th className="px-2 py-2.5 text-center">Salida AM</th>
+                                <th className="px-2 py-2.5 text-center">Entrada PM</th>
+                                <th className="px-2 py-2.5 text-center">Reporte</th>
+                                <th className="px-2 py-2.5 text-center">Paradas</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Faltas</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Retardos</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Regresos</th>
+                                <th className="px-4 py-2.5 text-center bg-indigo-50 text-indigo-700 font-extrabold">Calif. Mes</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {singleTechMonthBreakdown.map(m => (
+                                <tr key={m.mes} className="hover:bg-slate-50 transition">
+                                  <td className="px-4 py-2.5 font-bold text-slate-700">{m.mesLabel}</td>
+                                  <td className="px-2 py-2.5 text-center font-mono">{m.dias}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scSal !== null ? m.scSal.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scEnt !== null ? m.scEnt.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scRep !== null ? m.scRep.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scPar !== null ? m.scPar.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.fal || '-'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.ret || '-'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.reg || '-'}</td>
+                                  <td className="px-4 py-2.5 text-center font-extrabold bg-indigo-50/30 text-indigo-700">
+                                    {m.final !== null ? m.final.toFixed(2) : <span className="text-slate-400 font-normal italic">N/A</span>}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-slate-100/70 font-bold border-t border-slate-200">
+                              <tr>
+                                <td className="px-4 py-2.5 text-slate-800 uppercase tracking-wide">PROMEDIO GENERAL</td>
+                                <td className="px-2 py-2.5 text-center font-mono">{singleTechRecord?.registros || 0}</td>
+                                <td className="px-2 py-2.5 text-center">{singleTechRecord?.sSal !== null ? singleTechRecord?.sSal.toFixed(1) : '—'}</td>
+                                <td className="px-2 py-2.5 text-center">{singleTechRecord?.sEnt !== null ? singleTechRecord?.sEnt.toFixed(1) : '—'}</td>
+                                <td className="px-2 py-2.5 text-center">{singleTechRecord?.sRep !== null ? singleTechRecord?.sRep.toFixed(1) : '—'}</td>
+                                <td className="px-2 py-2.5 text-center">{singleTechRecord?.sPar !== null ? singleTechRecord?.sPar.toFixed(1) : '—'}</td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{singleTechRecord?.fal || '-'}</td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{singleTechRecord?.ret || '-'}</td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{singleTechRecord?.reg || '-'}</td>
+                                <td className="px-4 py-2.5 text-center font-extrabold text-sm text-indigo-700 bg-indigo-100/60">
+                                  {singleTechRecord?.final !== null && singleTechRecord?.final !== undefined ? singleTechRecord.final.toFixed(2) : 'N/A'}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* HISTÓRICO Y EVOLUCIÓN MENSUAL GENERAL CUANDO SE SELECCIONAN TODOS O VARIOS TÉCNICOS EN MÁS DE 1 MES */}
+                    {!isSingleTech && isMultiMonth && globalMonthBreakdown && globalMonthBreakdown.length > 0 && (
+                      <div className="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm mb-8 print-avoid-break">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 mb-4 border-b border-slate-100 pb-4">
+                          <div>
+                            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                              <Icons.Calendar className="text-indigo-600" size={20}/>
+                              Histórico y Evolución Mensual General (Todos los Técnicos)
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Evolución del desempeño colectivo mes con mes y promedio global del periodo</p>
+                          </div>
+                          <div className="bg-indigo-50 border border-indigo-200 px-4 py-2 rounded-xl flex items-center gap-2">
+                            <span className="text-xs text-indigo-700 font-semibold">Promedio General Periodo:</span>
+                            <span className="text-lg font-extrabold text-indigo-700">
+                              {kpi?.scoreProj !== undefined ? kpi.scoreProj.toFixed(2) : 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* GRÁFICA DE EVOLUCIÓN MENSUAL */}
+                        <div className="h-48 w-full mb-6 pt-2">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={globalMonthBreakdown} margin={{top: 15, right: 30, left: -20, bottom: 0}}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                              <XAxis dataKey="mesLabel" tick={{fontSize: 11, fontWeight: 'bold'}} />
+                              <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{fontSize: 10}} />
+                              <RechartsTooltip formatter={(v) => [v !== null ? Number(v).toFixed(2) : 'N/A', 'Promedio General']} />
+                              <ReferenceLine y={kpi?.scoreProj || 0} stroke="#6366F1" strokeDasharray="3 3" />
+                              <Bar dataKey="final" barSize={36} radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                                {globalMonthBreakdown.map((entry, index) => (
+                                  <Cell key={`bar-global-${index}`} fill={entry.final === null ? '#94A3B8' : entry.final >= 8 ? '#10B981' : entry.final >= 6 ? '#F59E0B' : '#EF4444'} />
+                                ))}
+                                <LabelList dataKey={d => d.final !== null ? d.final.toFixed(2) : 'N/A'} position="top" fontSize={11} fontWeight="bold" />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        {/* TABLA DE DESGLOSE MES A MES GLOBAL */}
+                        <div className="overflow-x-auto rounded-xl border border-slate-100">
+                          <table className="w-full text-xs text-left">
+                            <thead className="bg-slate-50 uppercase text-slate-500 font-bold border-b border-slate-100">
+                              <tr>
+                                <th className="px-4 py-2.5">Mes</th>
+                                <th className="px-2 py-2.5 text-center">Técnicos Eval.</th>
+                                <th className="px-2 py-2.5 text-center">Días Obra Tot.</th>
+                                <th className="px-2 py-2.5 text-center">Salida AM</th>
+                                <th className="px-2 py-2.5 text-center">Entrada PM</th>
+                                <th className="px-2 py-2.5 text-center">Reporte</th>
+                                <th className="px-2 py-2.5 text-center">Paradas</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Faltas</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Retardos</th>
+                                <th className="px-2 py-2.5 text-center text-red-500">Regresos</th>
+                                <th className="px-4 py-2.5 text-center bg-indigo-50 text-indigo-700 font-extrabold">Calif. Promedio</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {globalMonthBreakdown.map(m => (
+                                <tr key={m.mes} className="hover:bg-slate-50 transition">
+                                  <td className="px-4 py-2.5 font-bold text-slate-700">{m.mesLabel}</td>
+                                  <td className="px-2 py-2.5 text-center font-mono font-bold text-indigo-600">{m.techCount}</td>
+                                  <td className="px-2 py-2.5 text-center font-mono">{m.dias}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scSal !== null ? m.scSal.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scEnt !== null ? m.scEnt.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scRep !== null ? m.scRep.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center">{m.scPar !== null ? m.scPar.toFixed(1) : '—'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.fal || '-'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.ret || '-'}</td>
+                                  <td className="px-2 py-2.5 text-center text-red-600 bg-red-50/20">{m.reg || '-'}</td>
+                                  <td className="px-4 py-2.5 text-center font-extrabold bg-indigo-50/30 text-indigo-700">
+                                    {m.final !== null ? m.final.toFixed(2) : <span className="text-slate-400 font-normal italic">N/A</span>}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot className="bg-slate-100/70 font-bold border-t border-slate-200">
+                              <tr>
+                                <td className="px-4 py-2.5 text-slate-800 uppercase tracking-wide">PROMEDIO GENERAL</td>
+                                <td className="px-2 py-2.5 text-center font-mono font-bold text-indigo-600">{evaluables.length}</td>
+                                <td className="px-2 py-2.5 text-center font-mono">{globalMonthBreakdown.reduce((s, x) => s + x.dias, 0)}</td>
+                                <td className="px-2 py-2.5 text-center">
+                                  {globalMonthBreakdown.length > 0 ? (globalMonthBreakdown.reduce((s, x) => s + (x.scSal || 0), 0) / globalMonthBreakdown.length).toFixed(1) : '—'}
+                                </td>
+                                <td className="px-2 py-2.5 text-center">
+                                  {globalMonthBreakdown.length > 0 ? (globalMonthBreakdown.reduce((s, x) => s + (x.scEnt || 0), 0) / globalMonthBreakdown.length).toFixed(1) : '—'}
+                                </td>
+                                <td className="px-2 py-2.5 text-center">
+                                  {globalMonthBreakdown.length > 0 ? (globalMonthBreakdown.reduce((s, x) => s + (x.scRep || 0), 0) / globalMonthBreakdown.length).toFixed(1) : '—'}
+                                </td>
+                                <td className="px-2 py-2.5 text-center">
+                                  {globalMonthBreakdown.length > 0 ? (globalMonthBreakdown.reduce((s, x) => s + (x.scPar || 0), 0) / globalMonthBreakdown.length).toFixed(1) : '—'}
+                                </td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{globalMonthBreakdown.reduce((s, x) => s + x.fal, 0) || '-'}</td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{globalMonthBreakdown.reduce((s, x) => s + x.ret, 0) || '-'}</td>
+                                <td className="px-2 py-2.5 text-center text-red-600">{globalMonthBreakdown.reduce((s, x) => s + x.reg, 0) || '-'}</td>
+                                <td className="px-4 py-2.5 text-center font-extrabold text-sm text-indigo-700 bg-indigo-100/60">
+                                  {kpi?.scoreProj !== undefined ? kpi.scoreProj.toFixed(2) : 'N/A'}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
                     {/* DETALLES */}
-                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-8 print-page-break print-no-shadow"><div className="p-6 border-b border-slate-100 bg-slate-50/50 print-bg-transparent"><h2 className="font-bold text-lg text-slate-800">Detalle Técnico</h2></div><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold"><tr><th className="px-4 py-3 pl-6">Nombre</th><th className="px-2 py-3 text-center">Salida</th><th className="px-2 py-3 text-center">Entrada</th><th className="px-2 py-3 text-center">Reporte</th><th className="px-2 py-3 text-center">Parada</th><th className="px-2 py-3 text-center text-red-400">Reg</th><th className="px-2 py-3 text-center text-red-400">Ret</th><th className="px-2 py-3 text-center text-red-400">Fal</th><th className="px-4 py-3 text-center bg-indigo-50 text-indigo-700">Final</th></tr></thead><tbody className="divide-y divide-slate-100">{processed && processed.map(t=>(<tr key={t.nombre} className="hover:bg-slate-50 transition"><td className="px-4 py-3 pl-6 font-medium">{t.nombre}</td><td className="px-2 py-3 text-center">{t.sSal.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sEnt.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sRep.toFixed(1)}</td><td className="px-2 py-3 text-center">{t.sPar}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.reg||'-'}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.ret||'-'}</td><td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.fal||'-'}</td><td className="px-4 py-3 text-center font-bold text-lg text-indigo-700 bg-indigo-50/30">{t.final.toFixed(2)}</td></tr>))}</tbody></table></div></div>
+                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-8 print-page-break print-no-shadow">
+                      <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center print-bg-transparent">
+                        <h2 className="font-bold text-lg text-slate-800">Detalle Técnico</h2>
+                        {isMultiMonth && (
+                          <span className="text-xs text-slate-400 font-medium">
+                            💡 Puedes hacer clic en un técnico para ver su desglose mes a mes
+                          </span>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold">
+                            <tr>
+                              <th className="px-4 py-3 pl-6">Nombre</th>
+                              <th className="px-2 py-3 text-center">Salida</th>
+                              <th className="px-2 py-3 text-center">Entrada</th>
+                              <th className="px-2 py-3 text-center">Reporte</th>
+                              <th className="px-2 py-3 text-center">Parada</th>
+                              <th className="px-2 py-3 text-center text-red-400">Reg</th>
+                              <th className="px-2 py-3 text-center text-red-400">Ret</th>
+                              <th className="px-2 py-3 text-center text-red-400">Fal</th>
+                              <th className="px-4 py-3 text-center bg-indigo-50 text-indigo-700">Final</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {processed && processed.map(t => {
+                              const isExpanded = expandedTech === t.nombre;
+                              const hasMb = isMultiMonth && t.monthBreakdown && t.monthBreakdown.length > 0;
+                              return (
+                                <React.Fragment key={t.nombre}>
+                                  <tr 
+                                    className={`hover:bg-slate-50 transition ${t.isSpecialOnly ? 'opacity-60 bg-slate-50/50' : ''} ${hasMb ? 'cursor-pointer' : ''}`}
+                                    onClick={() => { if (hasMb) setExpandedTech(isExpanded ? null : t.nombre); }}
+                                    title={hasMb ? 'Clic para ver u ocultar desglose mensual' : ''}
+                                  >
+                                    <td className="px-4 py-3 pl-6 font-medium">
+                                      <div className="flex items-center gap-2">
+                                        {hasMb && (
+                                          <span className={`text-[10px] text-slate-400 transition-transform ${isExpanded ? 'rotate-90 text-indigo-600 font-bold' : ''}`}>
+                                            ▶
+                                          </span>
+                                        )}
+                                        <span>{t.nombre}</span>
+                                        {t.isSpecialOnly && <span className="ml-1 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-normal">Proyecto Especial</span>}
+                                        {hasMb && <span className="ml-1 text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded font-semibold">{t.monthBreakdown.length}m</span>}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-3 text-center">{t.sSal !== null ? t.sSal.toFixed(1) : '—'}</td>
+                                    <td className="px-2 py-3 text-center">{t.sEnt !== null ? t.sEnt.toFixed(1) : '—'}</td>
+                                    <td className="px-2 py-3 text-center">{t.sRep !== null ? t.sRep.toFixed(1) : '—'}</td>
+                                    <td className="px-2 py-3 text-center">{t.sPar !== null ? (typeof t.sPar === 'number' ? t.sPar.toFixed(1) : t.sPar) : '—'}</td>
+                                    <td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.reg || '-'}</td>
+                                    <td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.ret || '-'}</td>
+                                    <td className="px-2 py-3 text-center text-red-500 bg-red-50/30">{t.fal || '-'}</td>
+                                    <td className={`px-4 py-3 text-center font-bold ${t.isSpecialOnly ? 'text-slate-400 bg-slate-100/50 italic text-xs' : 'text-lg text-indigo-700 bg-indigo-50/30'}`}>
+                                      {t.final !== null ? t.final.toFixed(2) : 'N/A'}
+                                    </td>
+                                  </tr>
+                                  {isExpanded && hasMb && (
+                                    <tr className="bg-indigo-50/20">
+                                      <td colSpan={9} className="p-3 pl-8 pr-6">
+                                        <div className="bg-white rounded-xl border border-indigo-100 p-4 shadow-sm">
+                                          <div className="text-xs font-bold text-indigo-900 mb-2 flex items-center justify-between">
+                                            <span className="flex items-center gap-1.5">
+                                              <Icons.Calendar size={14} className="text-indigo-600"/>
+                                              Desglose Mensual Histórico: {t.nombre}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-normal">Clic en la fila para cerrar</span>
+                                          </div>
+                                          <table className="w-full text-xs">
+                                            <thead className="bg-slate-50 uppercase text-[10px] text-slate-500 font-bold border-b border-slate-100">
+                                              <tr>
+                                                <th className="py-2 px-3 text-left">Mes</th>
+                                                <th className="py-2 px-2 text-center">Días Obra</th>
+                                                <th className="py-2 px-2 text-center">Salida AM</th>
+                                                <th className="py-2 px-2 text-center">Entrada PM</th>
+                                                <th className="py-2 px-2 text-center">Reporte</th>
+                                                <th className="py-2 px-2 text-center">Paradas</th>
+                                                <th className="py-2 px-2 text-center text-red-500">Faltas</th>
+                                                <th className="py-2 px-2 text-center text-red-500">Retardos</th>
+                                                <th className="py-2 px-2 text-center text-red-500">Regresos</th>
+                                                <th className="py-2 px-3 text-center bg-indigo-50 text-indigo-700 font-extrabold">Calif. Mes</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                              {t.monthBreakdown.map(mb => (
+                                                <tr key={mb.mes} className="hover:bg-slate-50">
+                                                  <td className="py-1.5 px-3 font-semibold text-slate-700">{mb.mesLabel}</td>
+                                                  <td className="py-1.5 px-2 text-center font-mono">{mb.dias}</td>
+                                                  <td className="py-1.5 px-2 text-center">{mb.scSal !== null ? mb.scSal.toFixed(1) : '—'}</td>
+                                                  <td className="py-1.5 px-2 text-center">{mb.scEnt !== null ? mb.scEnt.toFixed(1) : '—'}</td>
+                                                  <td className="py-1.5 px-2 text-center">{mb.scRep !== null ? mb.scRep.toFixed(1) : '—'}</td>
+                                                  <td className="py-1.5 px-2 text-center">{mb.scPar !== null ? mb.scPar.toFixed(1) : '—'}</td>
+                                                  <td className="py-1.5 px-2 text-center text-red-600 bg-red-50/20">{mb.fal || '-'}</td>
+                                                  <td className="py-1.5 px-2 text-center text-red-600 bg-red-50/20">{mb.ret || '-'}</td>
+                                                  <td className="py-1.5 px-2 text-center text-red-600 bg-red-50/20">{mb.reg || '-'}</td>
+                                                  <td className="py-1.5 px-3 text-center font-bold text-indigo-700 bg-indigo-50/30">
+                                                    {mb.final !== null ? mb.final.toFixed(2) : 'N/A'}
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                     
                     {/* TABLA TIEMPOS */}
                     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden print-avoid-break print-no-shadow"><div className="p-5 border-b border-slate-100 print-bg-transparent"><h3 className="font-bold text-slate-700 flex gap-2"><Icons.MapPin size={18} className="text-teal-500"/> Tiempos Sitio</h3></div><table className="w-full text-sm text-left text-slate-600"><thead className="bg-slate-50 text-xs uppercase text-slate-500 font-bold"><tr><th className="px-6 py-3 pl-6">Técnico</th><th className="px-6 py-3 text-center">Llegada Prom.<br/><span className="text-[10px] font-normal text-teal-600 bg-teal-50 px-2 rounded">Prom: {siteStats.lleg}</span></th><th className="px-6 py-3 text-center">Salida Prom.<br/><span className="text-[10px] font-normal text-teal-600 bg-teal-50 px-2 rounded">Prom: {siteStats.sal}</span></th><th className="px-6 py-3 text-center bg-teal-50 text-teal-700">Tiempo Sitio<br/><span className="text-[10px] font-bold">Prom: {siteStats.sitio}</span></th></tr></thead><tbody className="divide-y divide-slate-100">{processed && processed.map(t=>(<tr key={t.nombre}><td className="px-6 py-3 pl-6 font-medium">{t.nombre}</td><td className="px-6 py-3 text-center font-mono">{t.tLleg}</td><td className="px-6 py-3 text-center font-mono">{t.tSal}</td><td className="px-6 py-3 text-center font-mono font-bold text-teal-600 bg-teal-50/30">{t.tSitio} hr</td></tr>))}</tbody></table></div>
