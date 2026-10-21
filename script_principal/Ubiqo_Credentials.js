@@ -9,6 +9,14 @@ function handleUbiqoGet(e) {
     var resCandado = auditVerificarCandadoFecha(fechaQuery);
     return ContentService.createTextOutput(JSON.stringify(resCandado)).setMimeType(ContentService.MimeType.JSON);
   }
+
+  // ── Lectura de Log_Mejora_Continua para análisis estadístico ──
+  if (e.parameter.action === "get_log_mejora") {
+    var ssConfigLog = (typeof auditObtenerSpreadsheetConfiguracion === 'function') ? auditObtenerSpreadsheetConfiguracion() : null;
+    var shLog = ssConfigLog ? ssConfigLog.getSheetByName("Log_Mejora_Continua") : null;
+    var logRows = (shLog && shLog.getLastRow() > 0) ? shLog.getDataRange().getDisplayValues() : [];
+    return ContentService.createTextOutput(JSON.stringify({ status: "ok", rows: logRows })).setMimeType(ContentService.MimeType.JSON);
+  }
   
   try {
     var sheets = SpreadsheetApp.getActiveSpreadsheet().getSheets();
@@ -93,80 +101,7 @@ function auditVerificarCandadoFecha(fechaParam) {
       dashDate  = d + '-' + m + '-' + y;
     }
 
-    // ── 1. CANDADO: BITÁCORA REAL ──
-    try {
-      var ssBitacora = SpreadsheetApp.openById(AUDIT_BITACORA_SHEET_ID);
-      var shBitacora = ssBitacora.getSheetByName(AUDIT_BITACORA_TAB_NAME);
-      if (shBitacora && shBitacora.getLastRow() > 1) {
-        var bitData = shBitacora.getDataRange().getValues();
-        var bHeaders = bitData[0];
-        var bMap = (typeof auditObtenerMapaIndicesBitacora === 'function') 
-          ? auditObtenerMapaIndicesBitacora(bHeaders) 
-          : {};
-        var bColFecha = (bMap.FECHA !== undefined) ? bMap.FECHA : 2;
-        var bColKM    = (bMap.KM !== undefined) ? bMap.KM : 22;
-        var bColSal   = (bMap.HORA_SALIDA !== undefined) ? bMap.HORA_SALIDA : 15;
-
-        for (var r = 1; r < bitData.length; r++) {
-          var rFecha = (typeof auditFastNormalizarFechaKey === 'function')
-            ? auditFastNormalizarFechaKey(bitData[r][bColFecha])
-            : String(bitData[r][bColFecha] || '').trim();
-          if (rFecha === slashDate) {
-            var kmVal = parseFloat(bitData[r][bColKM]);
-            var salVal = String(bitData[r][bColSal] || '').trim();
-            if ((!isNaN(kmVal) && kmVal > 0) || salVal !== '') {
-              Logger.log('[CANDADO] 🔒 La fecha ' + slashDate + ' ya tiene datos en Bitácora Real.');
-              return {
-                candado_activo: true,
-                motivo: "La fecha " + slashDate + " ya está procesada con métricas GPS en Bitácora Real.",
-                tipo: "bitacora_real"
-              };
-            }
-          }
-        }
-      }
-    } catch (bitErr) {
-      Logger.log('[CANDADO AVISO] Error revisando Bitácora Real: ' + bitErr.message);
-    }
-
-    // ── 2. CANDADO: HISTORIAL_GPS (Estado = "Procesado") ──
-    try {
-      var ssConfig = (typeof auditObtenerSpreadsheetConfiguracion === 'function')
-        ? auditObtenerSpreadsheetConfiguracion()
-        : null;
-      if (ssConfig) {
-        var shHist = ssConfig.getSheetByName('Historial_GPS');
-        if (shHist && shHist.getLastRow() > 1) {
-          var hData = shHist.getDataRange().getValues();
-          var hHeaders = hData[0];
-          var hColFecha = 1, hColEstado = 12;
-          for (var c = 0; c < hHeaders.length; c++) {
-            var hName = String(hHeaders[c] || '').trim().toLowerCase();
-            if (hName === 'fecha') hColFecha = c;
-            if (hName === 'estado') hColEstado = c;
-          }
-
-          for (var hr = 1; hr < hData.length; hr++) {
-            var hFecha = (typeof auditFormatDate === 'function')
-              ? auditFormatDate(hData[hr][hColFecha])
-              : String(hData[hr][hColFecha] || '').trim();
-            var hEst = String(hData[hr][hColEstado] || '').trim().toLowerCase();
-            if (hFecha === slashDate && hEst === 'procesado') {
-              Logger.log('[CANDADO] 🔒 La fecha ' + slashDate + ' ya está marcada como Procesado en Historial_GPS.');
-              return {
-                candado_activo: true,
-                motivo: "La fecha " + slashDate + " ya fue procesada previamente en Historial_GPS.",
-                tipo: "historial_procesado"
-              };
-            }
-          }
-        }
-      }
-    } catch (histErr) {
-      Logger.log('[CANDADO AVISO] Error revisando Historial_GPS: ' + histErr.message);
-    }
-
-    // ── 3. CANDADO: ARCHIVOS EXISTENTES EN DRIVE ──
+    // ── 1. CANDADO ULTRA-RÁPIDO: ARCHIVOS EXISTENTES EN DRIVE (0.2s) ──
     try {
       var folderProcesados = DriveApp.getFolderById(AUDIT_GPS_PROCESADOS_FOLDER_ID);
       if (folderProcesados) {
@@ -201,6 +136,91 @@ function auditVerificarCandadoFecha(fechaParam) {
       }
     } catch (driveErr) {
       Logger.log('[CANDADO AVISO] Error revisando carpetas Drive: ' + driveErr.message);
+    }
+
+    // ── 2. CANDADO: BITÁCORA REAL (Solo últimas 300 filas para velocidad instantánea) ──
+    try {
+      var ssBitacora = SpreadsheetApp.openById(AUDIT_BITACORA_SHEET_ID);
+      var shBitacora = ssBitacora.getSheetByName(AUDIT_BITACORA_TAB_NAME);
+      if (shBitacora) {
+        var bitLastRow = shBitacora.getLastRow();
+        var bitLastCol = shBitacora.getLastColumn();
+        if (bitLastRow > 1) {
+          var bHeaders = shBitacora.getRange(1, 1, 1, bitLastCol).getValues()[0];
+          var bMap = (typeof auditObtenerMapaIndicesBitacora === 'function') 
+            ? auditObtenerMapaIndicesBitacora(bHeaders) 
+            : {};
+          var bColFecha = (bMap.FECHA !== undefined) ? bMap.FECHA : 2;
+          var bColKM    = (bMap.KM !== undefined) ? bMap.KM : 22;
+          var bColSal   = (bMap.SALIDA !== undefined) ? bMap.SALIDA : 15;
+
+          var startBitRow = Math.max(2, bitLastRow - 300);
+          var bitData = shBitacora.getRange(startBitRow, 1, bitLastRow - startBitRow + 1, bitLastCol).getValues();
+
+          for (var r = bitData.length - 1; r >= 0; r--) {
+            var rFecha = (typeof auditFastNormalizarFechaKey === 'function')
+              ? auditFastNormalizarFechaKey(bitData[r][bColFecha])
+              : String(bitData[r][bColFecha] || '').trim();
+            if (rFecha === slashDate) {
+              var kmVal = parseFloat(bitData[r][bColKM]);
+              var salVal = String(bitData[r][bColSal] || '').trim();
+              if ((!isNaN(kmVal) && kmVal > 0) || salVal !== '') {
+                Logger.log('[CANDADO] 🔒 La fecha ' + slashDate + ' ya tiene datos en Bitácora Real.');
+                return {
+                  candado_activo: true,
+                  motivo: "La fecha " + slashDate + " ya está procesada con métricas GPS en Bitácora Real.",
+                  tipo: "bitacora_real"
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (bitErr) {
+      Logger.log('[CANDADO AVISO] Error revisando Bitácora Real: ' + bitErr.message);
+    }
+
+    // ── 3. CANDADO: HISTORIAL_GPS (Últimas 400 filas) ──
+    try {
+      var ssConfig = (typeof auditObtenerSpreadsheetConfiguracion === 'function')
+        ? auditObtenerSpreadsheetConfiguracion()
+        : null;
+      if (ssConfig) {
+        var shHist = ssConfig.getSheetByName('Historial_GPS');
+        if (shHist) {
+          var hLastRow = shHist.getLastRow();
+          var hLastCol = shHist.getLastColumn();
+          if (hLastRow > 1) {
+            var hHeaders = shHist.getRange(1, 1, 1, hLastCol).getValues()[0];
+            var hColFecha = 1, hColEstado = 12;
+            for (var c = 0; c < hHeaders.length; c++) {
+              var hName = String(hHeaders[c] || '').trim().toLowerCase();
+              if (hName === 'fecha') hColFecha = c;
+              if (hName === 'estado') hColEstado = c;
+            }
+
+            var startHistRow = Math.max(2, hLastRow - 400);
+            var hData = shHist.getRange(startHistRow, 1, hLastRow - startHistRow + 1, hLastCol).getValues();
+
+            for (var hr = hData.length - 1; hr >= 0; hr--) {
+              var hFecha = (typeof auditFormatDate === 'function')
+                ? auditFormatDate(hData[hr][hColFecha])
+                : String(hData[hr][hColFecha] || '').trim();
+              var hEst = String(hData[hr][hColEstado] || '').trim().toLowerCase();
+              if (hFecha === slashDate && (hEst === 'procesado' || hEst === 'pendiente')) {
+                Logger.log('[CANDADO] 🔒 La fecha ' + slashDate + ' ya existe en Historial_GPS (' + hEst + ').');
+                return {
+                  candado_activo: true,
+                  motivo: "La fecha " + slashDate + " ya fue registrada previamente en Historial_GPS (" + hEst + ").",
+                  tipo: "historial_procesado"
+                };
+              }
+            }
+          }
+        }
+      }
+    } catch (histErr) {
+      Logger.log('[CANDADO AVISO] Error revisando Historial_GPS: ' + histErr.message);
     }
 
     return { candado_activo: false, motivo: "Fecha no procesada aún. Se permite descarga." };

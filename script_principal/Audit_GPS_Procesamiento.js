@@ -511,8 +511,8 @@ function auditEjecutarDiffYLogMejoraContinua(ssConfig, shPrueba, datesToProcess)
           var hTech   = (pNombreCol !== undefined) ? String(hRow[pNombreCol] || '').trim() : '';
           var hUnidad = (pruebaMap.UNIDAD !== undefined) ? String(hRow[pruebaMap.UNIDAD] || '').trim() : '';
           var hProj   = (pruebaMap.PROYECTO !== undefined) ? String(hRow[pruebaMap.PROYECTO] || '').trim() : '';
-          var hDe     = (pruebaMap.DE !== undefined) ? String(hRow[pruebaMap.DE] || '').trim() : '';
-          var hA      = (pruebaMap.A !== undefined) ? String(hRow[pruebaMap.A] || '').trim() : '';
+          var hDe     = (pruebaMap.DE !== undefined) ? auditFormatearHoraComparacion(hRow[pruebaMap.DE]) : '';
+          var hA      = (pruebaMap.A !== undefined) ? auditFormatearHoraComparacion(hRow[pruebaMap.A]) : '';
           
           if (i >= sTechRows.length) {
             // Caso 1: Fila nueva agregada manualmente por el humano
@@ -609,8 +609,8 @@ function auditEjecutarDiffYLogMejoraContinua(ssConfig, shPrueba, datesToProcess)
             }
             
             // e) Llegada a Proyecto (HORA LLEG PROY)
-            var sLlegComp = auditFormatearHoraComparacion(snapMap.LLEG_PROY !== undefined ? sRow[snapMap.LLEG_PROY] : '');
-            var hLlegComp = auditFormatearHoraComparacion(pruebaMap.LLEG_PROY !== undefined ? hRow[pruebaMap.LLEG_PROY] : '');
+            var sLlegComp = auditFormatearHoraComparacion(snapMap.HORA_LLEG_PROY !== undefined ? sRow[snapMap.HORA_LLEG_PROY] : '');
+            var hLlegComp = auditFormatearHoraComparacion(pruebaMap.HORA_LLEG_PROY !== undefined ? hRow[pruebaMap.HORA_LLEG_PROY] : '');
             if (sLlegComp !== hLlegComp) {
               if (!sLlegComp && hLlegComp) {
                 logEntries.push([
@@ -642,8 +642,8 @@ function auditEjecutarDiffYLogMejoraContinua(ssConfig, shPrueba, datesToProcess)
             }
             
             // f) Salida de Proyecto (HORA SAL PROY)
-            var sSalComp = auditFormatearHoraComparacion(snapMap.SAL_PROY !== undefined ? sRow[snapMap.SAL_PROY] : '');
-            var hSalComp = auditFormatearHoraComparacion(pruebaMap.SAL_PROY !== undefined ? hRow[pruebaMap.SAL_PROY] : '');
+            var sSalComp = auditFormatearHoraComparacion(snapMap.HORA_SAL_PROY !== undefined ? sRow[snapMap.HORA_SAL_PROY] : '');
+            var hSalComp = auditFormatearHoraComparacion(pruebaMap.HORA_SAL_PROY !== undefined ? hRow[pruebaMap.HORA_SAL_PROY] : '');
             if (sSalComp !== hSalComp && (sSalComp || hSalComp)) {
               logEntries.push([
                 timestampStr,
