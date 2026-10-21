@@ -170,7 +170,7 @@ def main():
         print(f"Consultando candados de seguridad en SMARTCORP para la fecha {formatted_date_query}...")
         try:
             check_url = f"{web_app_url}?action=check_candado&fecha={formatted_date_query}&token={token}"
-            resp = requests.get(check_url, timeout=25)
+            resp = requests.get(check_url, timeout=60)
             if resp.status_code == 200:
                 candado_data = resp.json()
                 if candado_data.get("candado_activo"):
