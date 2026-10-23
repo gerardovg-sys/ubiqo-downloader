@@ -101,42 +101,10 @@ function auditVerificarCandadoFecha(fechaParam) {
       dashDate  = d + '-' + m + '-' + y;
     }
 
-    // ── 1. CANDADO ULTRA-RÁPIDO: ARCHIVOS EXISTENTES EN DRIVE (0.2s) ──
-    try {
-      var folderProcesados = DriveApp.getFolderById(AUDIT_GPS_PROCESADOS_FOLDER_ID);
-      if (folderProcesados) {
-        var filesProc = folderProcesados.getFiles();
-        while (filesProc.hasNext()) {
-          var fName = filesProc.next().getName();
-          if (fName.indexOf(dashDate) !== -1 || fName.indexOf(slashDate) !== -1) {
-            Logger.log('[CANDADO] 🔒 Archivo de la fecha ' + dashDate + ' ya existe en GPS_Procesados.');
-            return {
-              candado_activo: true,
-              motivo: "El reporte (" + dashDate + ") ya existe en la carpeta GPS_Procesados.",
-              tipo: "archivo_procesado"
-            };
-          }
-        }
-      }
-
-      var folderPend = DriveApp.getFolderById(AUDIT_GPS_PENDIENTES_FOLDER_ID);
-      if (folderPend) {
-        var filesPend = folderPend.getFiles();
-        while (filesPend.hasNext()) {
-          var pName = filesPend.next().getName();
-          if (pName.indexOf(dashDate) !== -1 || pName.indexOf(slashDate) !== -1) {
-            Logger.log('[CANDADO] 🔒 Archivo de la fecha ' + dashDate + ' ya está en GPS_Pendientes.');
-            return {
-              candado_activo: true,
-              motivo: "El reporte (" + dashDate + ") ya se encuentra en GPS_Pendientes esperando procesamiento.",
-              tipo: "archivo_pendiente"
-            };
-          }
-        }
-      }
-    } catch (driveErr) {
-      Logger.log('[CANDADO AVISO] Error revisando carpetas Drive: ' + driveErr.message);
-    }
+    // NOTA IMPORTANTE: NO validar por nombre de archivo en Drive (GPS_Procesados / GPS_Pendientes)
+    // porque las subidas manuales guardaban la fecha de subida (HOY) en el nombre del archivo en vez de
+    // la fecha real de las rutas GPS (AYER), provocando falsos bloqueos al día siguiente.
+    // La validación se hace exclusivamente contra la fecha real de datos en Bitácora Real e Historial_GPS.
 
     // ── 2. CANDADO: BITÁCORA REAL (Solo últimas 300 filas para velocidad instantánea) ──
     try {
@@ -199,7 +167,7 @@ function auditVerificarCandadoFecha(fechaParam) {
               if (hName === 'estado') hColEstado = c;
             }
 
-            var startHistRow = Math.max(2, hLastRow - 400);
+            var startHistRow = Math.max(2, hLastRow - 600);
             var hData = shHist.getRange(startHistRow, 1, hLastRow - startHistRow + 1, hLastCol).getValues();
 
             for (var hr = hData.length - 1; hr >= 0; hr--) {

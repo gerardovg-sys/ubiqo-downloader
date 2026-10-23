@@ -377,10 +377,13 @@ function auditGuardarArchivoGPS(nombre, contenidoBase64) {
       throw new Error('No se pudo acceder a la carpeta GPS_Pendientes en Google Drive.');
     }
 
-    // Generar nombre único: Reporte Dinamico (DD-MM-YYYY HH_mm_ss).xlsx
+    // Generar nombre único diferenciando fecha del reporte vs marca de subida
     var timeZone      = Session.getScriptTimeZone() || 'GMT-6';
     var formattedDate = Utilities.formatDate(new Date(), timeZone, 'dd-MM-yyyy HH_mm_ss');
-    var nuevoNombre   = 'Reporte Dinamico (' + formattedDate + ').xlsx';
+    var matchFechaRep = String(nombre || '').match(/\((\d{2}-\d{2}-\d{4})\)/);
+    var nuevoNombre   = matchFechaRep
+      ? 'Reporte Dinamico (' + matchFechaRep[1] + ') [Subido ' + formattedDate + '].xlsx'
+      : 'Reporte Dinamico [Subido ' + formattedDate + '].xlsx';
 
     var bytes = Utilities.base64Decode(contenidoBase64);
     var blob  = Utilities.newBlob(
